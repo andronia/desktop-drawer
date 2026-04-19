@@ -4,7 +4,7 @@
         Title="DesktopInk.Controls"
         Icon="/Assets/app-icon.ico"
         Width="88"
-        Height="382"
+        Height="494"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -86,6 +86,22 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="SpotlightToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+            <Style.Triggers>
+                <!-- Spotlight active: purple -->
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="Active">
+                    <Setter Property="Background" Value="#DC8B5CF6"/>
+                </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="Active"/>
+                        <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsMouseOver}" Value="True"/>
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="#EE8B5CF6"/>
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="IconPathStyle" TargetType="Path">
             <Setter Property="Fill" Value="White"/>
             <Setter Property="Stretch" Value="Uniform"/>
@@ -116,18 +132,6 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-        </Style>
-
-        <Style x:Key="ThicknessDotStyle" TargetType="Ellipse">
-            <Setter Property="Fill" Value="White"/>
-            <Setter Property="Stroke" Value="Transparent"/>
-            <Setter Property="StrokeThickness" Value="0"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Tag}" Value="Active">
-                    <Setter Property="Stroke" Value="#FFE61A"/>
-                    <Setter Property="StrokeThickness" Value="2"/>
-                </DataTrigger>
-            </Style.Triggers>
         </Style>
 
         <Style x:Key="SwatchEllipseStyle" TargetType="Ellipse">
@@ -179,6 +183,17 @@
                 </Viewbox>
             </Button>
 
+            <!-- Arrow Toggle Button -->
+            <Button x:Name="ArrowButton" Width="36" Height="36" Margin="0,0,0,8"
+                    Style="{StaticResource ToolToggleButtonStyle}"
+                    Tag="Inactive"
+                    Click="OnArrowClick" ToolTip="Toggle Arrow">
+                <Viewbox Width="20" Height="20">
+                    <Path Data="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.58L12 20l8-8z"
+                          Style="{StaticResource IconPathStyle}"/>
+                </Viewbox>
+            </Button>
+
             <!-- Auto-Fade Toggle Button - Timer/history icon -->
             <Button x:Name="FadeButton" Width="36" Height="36" Margin="0,0,0,8"
                     Style="{StaticResource FadeToggleButtonStyle}"
@@ -190,21 +205,27 @@
                 </Viewbox>
             </Button>
 
-            <!-- Thickness Row: Thin / Medium / Thick -->
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
-                <Button x:Name="ThinButton" Style="{StaticResource SwatchButtonStyle}"
-                        Tag="Inactive" Click="OnThicknessClick" ToolTip="Thin">
-                    <Ellipse Style="{StaticResource ThicknessDotStyle}" Width="5" Height="5"/>
-                </Button>
-                <Button x:Name="MediumButton" Style="{StaticResource SwatchButtonStyle}"
-                        Tag="Active" Click="OnThicknessClick" ToolTip="Medium">
-                    <Ellipse Style="{StaticResource ThicknessDotStyle}" Width="10" Height="10"/>
-                </Button>
-                <Button x:Name="ThickButton" Style="{StaticResource SwatchButtonStyle}"
-                        Tag="Inactive" Click="OnThicknessClick" ToolTip="Thick">
-                    <Ellipse Style="{StaticResource ThicknessDotStyle}" Width="16" Height="16"/>
-                </Button>
-            </StackPanel>
+            <!-- Cursor Spotlight Toggle - Visibility/eye icon -->
+            <Button x:Name="SpotlightButton" Width="36" Height="36" Margin="0,0,0,8"
+                    Style="{StaticResource SpotlightToggleButtonStyle}"
+                    Tag="Inactive"
+                    Click="OnSpotlightClick" ToolTip="Toggle Cursor Spotlight">
+                <Viewbox Width="20" Height="20">
+                    <Path Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
+                          Style="{StaticResource IconPathStyle}"/>
+                </Viewbox>
+            </Button>
+
+            <!-- Thickness Slider (1-10); scroll wheel also adjusts -->
+            <Grid Width="72" Margin="0,2,0,10">
+                <Slider x:Name="ThicknessSlider"
+                        Minimum="1" Maximum="10" Value="4"
+                        TickFrequency="1" IsSnapToTickEnabled="True"
+                        SmallChange="1" LargeChange="1"
+                        ToolTip="Brush thickness (scroll to adjust)"
+                        ValueChanged="OnThicknessSliderChanged"
+                        PreviewMouseWheel="OnThicknessSliderWheel"/>
+            </Grid>
 
             <!-- Color Swatch Grid (3 per row) -->
             <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Margin="0,0,0,8">
@@ -234,6 +255,20 @@
                     <Button x:Name="MagentaSwatch" Style="{StaticResource SwatchButtonStyle}"
                             Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Magenta">
                         <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#FF2EB5"/>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button x:Name="OrangeSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Orange">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#FF8A1E"/>
+                    </Button>
+                    <Button x:Name="CyanSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Cyan">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#22DDE6"/>
+                    </Button>
+                    <Button x:Name="BlackSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Black">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#101010"/>
                     </Button>
                 </StackPanel>
             </StackPanel>

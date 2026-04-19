@@ -61,15 +61,15 @@ public partial class App : System.Windows.Application
 			millisecondsTimeOutInterval: Timeout.Infinite,
 			executeOnlyOnce: false);
 
+		_appSettings = AppSettings.Load();
+
 		_overlayManager = new OverlayManager();
 		_overlayManager.ShowOverlays();
 
-		_controlWindow = new ControlWindow(_overlayManager);
+		_controlWindow = new ControlWindow(_overlayManager, _appSettings);
 		_controlWindow.Show();
 
 		_trayIcon = new TrayIconManager(_overlayManager, _controlWindow);
-
-		_appSettings = AppSettings.Load();
 
 		_ = Task.Run(async () =>
 		{

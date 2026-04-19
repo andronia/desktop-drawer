@@ -35,6 +35,15 @@ public class OverlayManagerPenColorTests
         manager.CurrentPenColor.Should().Be(PenColor.Magenta);
 
         manager.CycleColor();
+        manager.CurrentPenColor.Should().Be(PenColor.Orange);
+
+        manager.CycleColor();
+        manager.CurrentPenColor.Should().Be(PenColor.Cyan);
+
+        manager.CycleColor();
+        manager.CurrentPenColor.Should().Be(PenColor.Black);
+
+        manager.CycleColor();
         manager.CurrentPenColor.Should().Be(PenColor.Red);
     }
 

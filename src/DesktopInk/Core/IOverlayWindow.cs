@@ -14,9 +14,11 @@ internal interface IOverlayWindow
 
     void SetTool(DrawTool tool);
 
-    void SetThickness(PenThickness thickness);
+    void SetThickness(int thickness);
 
     void SetAutoFade(bool enabled);
+
+    void SetSpotlight(bool enabled);
 
     void Show();
 

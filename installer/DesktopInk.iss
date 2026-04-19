@@ -2,7 +2,7 @@
 ; Per-user install — no UAC prompt, no admin required.
 
 #define MyAppName      "DesktopInk"
-#define MyAppVersion   "1.4.2"
+#define MyAppVersion   "1.5.0"
 #define MyAppPublisher "Andronia"
 #define MyAppExeName   "DesktopInk.exe"
 

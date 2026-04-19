@@ -5,4 +5,5 @@ public enum DrawTool
     Pen,
     Highlighter,
     Rectangle,
+    Arrow,
 }

@@ -11,6 +11,7 @@
         WindowStartupLocation="Manual">
     <Grid x:Name="Root" Background="#01000000">
         <Canvas x:Name="StrokeCanvas" Background="#01000000"/>
+        <Canvas x:Name="SpotlightCanvas" IsHitTestVisible="False" Background="Transparent"/>
 
         <Border x:Name="IndicatorHost"
                 HorizontalAlignment="Left"

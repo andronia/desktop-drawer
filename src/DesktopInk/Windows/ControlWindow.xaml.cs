@@ -15,9 +15,10 @@ public partial class ControlWindow : Window
     private const int HotkeyClearAll = 2;
     private const int HotkeyQuit = 3;
     private const double LogicalWidth = 88.0;
-    private const double LogicalHeight = 382.0;
+    private const double LogicalHeight = 494.0;
 
     private readonly OverlayManager _overlayManager;
+    private readonly AppSettings _appSettings;
     private readonly KeyboardHookManager _keyboardHook;
 
     private HwndSource? _hwndSource;
@@ -26,9 +27,10 @@ public partial class ControlWindow : Window
     private uint _dpiY = 96;
     private Win32.Rect? _currentMonitorBoundsPx;
 
-    public ControlWindow(OverlayManager overlayManager)
+    public ControlWindow(OverlayManager overlayManager, AppSettings appSettings)
     {
         _overlayManager = overlayManager;
+        _appSettings = appSettings;
         _keyboardHook = new KeyboardHookManager();
 
         InitializeComponent();
@@ -39,11 +41,13 @@ public partial class ControlWindow : Window
         _overlayManager.ToolChanged += OnToolChanged;
         _overlayManager.ThicknessChanged += OnThicknessChanged;
         _overlayManager.AutoFadeChanged += OnAutoFadeChanged;
+        _overlayManager.SpotlightChanged += OnSpotlightChanged;
 
         UpdateColorSwatchSelection(_overlayManager.CurrentPenColor);
         UpdateToolButtonAppearance(_overlayManager.CurrentTool);
         UpdateThicknessSelection(_overlayManager.CurrentThickness);
         UpdateFadeButtonAppearance(_overlayManager.IsAutoFadeEnabled);
+        UpdateSpotlightButtonAppearance(_overlayManager.IsSpotlightEnabled);
 
         SourceInitialized += OnSourceInitialized;
         Closed += OnClosed;
@@ -71,7 +75,12 @@ public partial class ControlWindow : Window
             _dpiX = dpi;
             _dpiY = dpi;
         }
-        PositionNearPrimaryRightEdge();
+
+        if (!TryRestoreSavedPosition())
+        {
+            PositionNearPrimaryRightEdge();
+        }
+
         LocationChanged += OnLocationChanged;
         UpdateMonitorFromCurrentPosition(forceNotify: true);
 
@@ -111,6 +120,63 @@ public partial class ControlWindow : Window
         exStyle &= ~Win32.WsExToolWindow;
         exStyle |= Win32.WsExLayered;
         Win32.SetWindowLongPtr(_hwnd, Win32.GwlExStyle, new IntPtr(exStyle));
+    }
+
+    private bool TryRestoreSavedPosition()
+    {
+        var saved = _appSettings.Palette;
+        if (saved.Left is null || saved.Top is null)
+        {
+            return false;
+        }
+
+        var widthPx = ScaleToPixels(Width, _dpiX);
+        var heightPx = ScaleToPixels(Height, _dpiY);
+        var leftPx = (int)Math.Round(saved.Left.Value);
+        var topPx = (int)Math.Round(saved.Top.Value);
+
+        if (!IsRectOnAnyScreen(leftPx, topPx, widthPx, heightPx))
+        {
+            // Saved position is off-screen (monitor unplugged, resolution changed).
+            return false;
+        }
+
+        var boundsPx = new Win32.Rect
+        {
+            Left = leftPx,
+            Top = topPx,
+            Right = leftPx + widthPx,
+            Bottom = topPx + heightPx,
+        };
+
+        ApplyBoundsPxToHwnd(boundsPx);
+        ApplyWpfBoundsFromPx(boundsPx, _dpiX, _dpiY);
+        return true;
+    }
+
+    private static bool IsRectOnAnyScreen(int leftPx, int topPx, int widthPx, int heightPx)
+    {
+        var rect = new System.Drawing.Rectangle(leftPx, topPx, widthPx, heightPx);
+        foreach (var screen in System.Windows.Forms.Screen.AllScreens)
+        {
+            if (screen.Bounds.IntersectsWith(rect))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void SaveCurrentPosition()
+    {
+        if (_hwnd == IntPtr.Zero || !Win32.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        _appSettings.Palette.Left = rect.Left;
+        _appSettings.Palette.Top = rect.Top;
+        _appSettings.Save();
     }
 
     private void PositionNearPrimaryRightEdge()
@@ -175,6 +241,8 @@ public partial class ControlWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        SaveCurrentPosition();
+
         UnregisterHotkeys();
 
         LocationChanged -= OnLocationChanged;
@@ -184,6 +252,7 @@ public partial class ControlWindow : Window
         _overlayManager.ToolChanged -= OnToolChanged;
         _overlayManager.ThicknessChanged -= OnThicknessChanged;
         _overlayManager.AutoFadeChanged -= OnAutoFadeChanged;
+        _overlayManager.SpotlightChanged -= OnSpotlightChanged;
 
         _keyboardHook.TemporaryModeActivated -= OnTemporaryModeActivated;
         _keyboardHook.TemporaryModeDeactivated -= OnTemporaryModeDeactivated;
@@ -414,6 +483,9 @@ public partial class ControlWindow : Window
             nameof(YellowSwatch) => PenColor.Yellow,
             nameof(WhiteSwatch) => PenColor.White,
             nameof(MagentaSwatch) => PenColor.Magenta,
+            nameof(OrangeSwatch) => PenColor.Orange,
+            nameof(CyanSwatch) => PenColor.Cyan,
+            nameof(BlackSwatch) => PenColor.Black,
             _ => PenColor.Red,
         };
 
@@ -450,6 +522,9 @@ public partial class ControlWindow : Window
         YellowSwatch.Tag = color == PenColor.Yellow ? "Active" : "Inactive";
         WhiteSwatch.Tag = color == PenColor.White ? "Active" : "Inactive";
         MagentaSwatch.Tag = color == PenColor.Magenta ? "Active" : "Inactive";
+        OrangeSwatch.Tag = color == PenColor.Orange ? "Active" : "Inactive";
+        CyanSwatch.Tag = color == PenColor.Cyan ? "Active" : "Inactive";
+        BlackSwatch.Tag = color == PenColor.Black ? "Active" : "Inactive";
     }
 
     private void OnHighlighterClick(object sender, RoutedEventArgs e)
@@ -462,6 +537,11 @@ public partial class ControlWindow : Window
         _overlayManager.ToggleRectangle();
     }
 
+    private void OnArrowClick(object sender, RoutedEventArgs e)
+    {
+        _overlayManager.ToggleArrow();
+    }
+
     private void OnToolChanged(object? sender, DrawTool tool)
     {
         UpdateToolButtonAppearance(tool);
@@ -469,47 +549,51 @@ public partial class ControlWindow : Window
 
     private void UpdateToolButtonAppearance(DrawTool tool)
     {
-        if (HighlighterButton is null || RectangleButton is null)
+        if (HighlighterButton is null || RectangleButton is null || ArrowButton is null)
         {
             return;
         }
 
         HighlighterButton.Tag = tool == DrawTool.Highlighter ? "Active" : "Inactive";
         RectangleButton.Tag = tool == DrawTool.Rectangle ? "Active" : "Inactive";
+        ArrowButton.Tag = tool == DrawTool.Arrow ? "Active" : "Inactive";
     }
 
-    private void OnThicknessClick(object sender, RoutedEventArgs e)
+    private void OnThicknessSliderChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (sender is not System.Windows.Controls.Button button)
+        // ValueChanged fires during InitializeComponent before the manager hook-up, so guard.
+        if (_overlayManager is null)
         {
             return;
         }
 
-        var thickness = button.Name switch
-        {
-            nameof(ThinButton) => PenThickness.Thin,
-            nameof(ThickButton) => PenThickness.Thick,
-            _ => PenThickness.Medium,
-        };
-
+        var thickness = (int)Math.Round(e.NewValue);
         _overlayManager.SelectThickness(thickness);
     }
 
-    private void OnThicknessChanged(object? sender, PenThickness thickness)
+    private void OnThicknessSliderWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        var step = e.Delta > 0 ? 1 : -1;
+        ThicknessSlider.Value = Math.Clamp(ThicknessSlider.Value + step, ThicknessSlider.Minimum, ThicknessSlider.Maximum);
+        e.Handled = true;
+    }
+
+    private void OnThicknessChanged(object? sender, int thickness)
     {
         UpdateThicknessSelection(thickness);
     }
 
-    private void UpdateThicknessSelection(PenThickness thickness)
+    private void UpdateThicknessSelection(int thickness)
     {
-        if (ThinButton is null)
+        if (ThicknessSlider is null)
         {
             return;
         }
 
-        ThinButton.Tag = thickness == PenThickness.Thin ? "Active" : "Inactive";
-        MediumButton.Tag = thickness == PenThickness.Medium ? "Active" : "Inactive";
-        ThickButton.Tag = thickness == PenThickness.Thick ? "Active" : "Inactive";
+        if ((int)Math.Round(ThicknessSlider.Value) != thickness)
+        {
+            ThicknessSlider.Value = thickness;
+        }
     }
 
     private void OnFadeClick(object sender, RoutedEventArgs e)
@@ -530,6 +614,26 @@ public partial class ControlWindow : Window
         }
 
         FadeButton.Tag = enabled ? "Active" : "Inactive";
+    }
+
+    private void OnSpotlightClick(object sender, RoutedEventArgs e)
+    {
+        _overlayManager.ToggleSpotlight();
+    }
+
+    private void OnSpotlightChanged(object? sender, bool enabled)
+    {
+        UpdateSpotlightButtonAppearance(enabled);
+    }
+
+    private void UpdateSpotlightButtonAppearance(bool enabled)
+    {
+        if (SpotlightButton is null)
+        {
+            return;
+        }
+
+        SpotlightButton.Tag = enabled ? "Active" : "Inactive";
     }
 
     private void OnClearClick(object sender, RoutedEventArgs e)

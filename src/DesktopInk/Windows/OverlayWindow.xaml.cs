@@ -6,6 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using DesktopInk.Core;
 using DesktopInk.Infrastructure;
 
@@ -25,11 +26,17 @@ public partial class OverlayWindow : Window, IOverlayWindow
     private bool _isDrawing;
     private Polyline? _activeStroke;
     private System.Windows.Shapes.Rectangle? _activeRect;
+    private System.Windows.Shapes.Path? _activeArrow;
     private System.Windows.Point _strokeStartPoint;
     private PenColor _penColor = PenColor.Red;
     private DrawTool _tool = DrawTool.Pen;
-    private PenThickness _thickness = PenThickness.Medium;
+    private int _thickness = OverlayManager.DefaultThickness;
     private bool _autoFadeEnabled;
+    private bool _spotlightEnabled;
+    private Ellipse? _spotlight;
+    private DispatcherTimer? _spotlightTimer;
+
+    private const double SpotlightDiameter = 72.0;
 
     private static readonly TimeSpan AutoFadeHold = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan AutoFadeDuration = TimeSpan.FromMilliseconds(2300);
@@ -99,14 +106,95 @@ public partial class OverlayWindow : Window, IOverlayWindow
         _tool = tool;
     }
 
-    public void SetThickness(PenThickness thickness)
+    public void SetThickness(int thickness)
     {
-        _thickness = thickness;
+        _thickness = Math.Clamp(thickness, OverlayManager.MinThickness, OverlayManager.MaxThickness);
     }
 
     public void SetAutoFade(bool enabled)
     {
         _autoFadeEnabled = enabled;
+    }
+
+    public void SetSpotlight(bool enabled)
+    {
+        _spotlightEnabled = enabled;
+
+        if (enabled)
+        {
+            EnsureSpotlightCreated();
+            _spotlightTimer ??= new DispatcherTimer(DispatcherPriority.Render)
+            {
+                Interval = TimeSpan.FromMilliseconds(16),
+            };
+            _spotlightTimer.Tick -= OnSpotlightTick;
+            _spotlightTimer.Tick += OnSpotlightTick;
+            _spotlightTimer.Start();
+        }
+        else
+        {
+            _spotlightTimer?.Stop();
+            if (_spotlight is not null)
+            {
+                _spotlight.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    private void EnsureSpotlightCreated()
+    {
+        if (_spotlight is not null)
+        {
+            return;
+        }
+
+        _spotlight = new Ellipse
+        {
+            Width = SpotlightDiameter,
+            Height = SpotlightDiameter,
+            Fill = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x40, 0xFF, 0xEB, 0x3B)),
+            Stroke = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0xB0, 0xFF, 0xC1, 0x07)),
+            StrokeThickness = 2,
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed,
+        };
+        SpotlightCanvas.Children.Add(_spotlight);
+    }
+
+    private void OnSpotlightTick(object? sender, EventArgs e)
+    {
+        if (!_spotlightEnabled || _spotlight is null)
+        {
+            return;
+        }
+
+        if (!Win32.GetCursorPos(out var cursorPx))
+        {
+            return;
+        }
+
+        if (cursorPx.X < _boundsPx.Left || cursorPx.X >= _boundsPx.Right ||
+            cursorPx.Y < _boundsPx.Top || cursorPx.Y >= _boundsPx.Bottom)
+        {
+            if (_spotlight.Visibility == Visibility.Visible)
+            {
+                _spotlight.Visibility = Visibility.Collapsed;
+            }
+            return;
+        }
+
+        if (_spotlight.Visibility != Visibility.Visible)
+        {
+            _spotlight.Visibility = Visibility.Visible;
+        }
+
+        var localXPx = cursorPx.X - _boundsPx.Left;
+        var localYPx = cursorPx.Y - _boundsPx.Top;
+        var wpfX = localXPx * 96.0 / (_dpiX == 0 ? 96u : _dpiX);
+        var wpfY = localYPx * 96.0 / (_dpiY == 0 ? 96u : _dpiY);
+
+        System.Windows.Controls.Canvas.SetLeft(_spotlight, wpfX - SpotlightDiameter / 2.0);
+        System.Windows.Controls.Canvas.SetTop(_spotlight, wpfY - SpotlightDiameter / 2.0);
     }
 
     private void OnSourceInitialized(object? sender, System.EventArgs e)
@@ -163,6 +251,13 @@ public partial class OverlayWindow : Window, IOverlayWindow
 
     private void OnClosed(object? sender, System.EventArgs e)
     {
+        if (_spotlightTimer is not null)
+        {
+            _spotlightTimer.Stop();
+            _spotlightTimer.Tick -= OnSpotlightTick;
+            _spotlightTimer = null;
+        }
+
         if (_hwndSource is not null)
         {
             _hwndSource.RemoveHook(WndProc);
@@ -285,6 +380,12 @@ public partial class OverlayWindow : Window, IOverlayWindow
             System.Windows.Controls.Canvas.SetTop(_activeRect, point.Y);
             StrokeCanvas.Children.Add(_activeRect);
         }
+        else if (_tool == DrawTool.Arrow)
+        {
+            _activeArrow = CreateArrow(_penColor, _thickness);
+            _activeArrow.Data = BuildArrowGeometry(point, point, _activeArrow.StrokeThickness);
+            StrokeCanvas.Children.Add(_activeArrow);
+        }
         else
         {
             _activeStroke = CreateStroke(_penColor, _tool, _thickness);
@@ -319,6 +420,13 @@ public partial class OverlayWindow : Window, IOverlayWindow
             return;
         }
 
+        if (_tool == DrawTool.Arrow && _activeArrow is not null)
+        {
+            _activeArrow.Data = BuildArrowGeometry(_strokeStartPoint, point, _activeArrow.StrokeThickness);
+            e.Handled = true;
+            return;
+        }
+
         if (_activeStroke is null)
         {
             return;
@@ -326,8 +434,7 @@ public partial class OverlayWindow : Window, IOverlayWindow
 
         if (isShiftHeld)
         {
-            point = ApplyStraightLineConstraint(point);
-
+            // Keep only start point + current cursor — produces a straight line at any angle.
             if (_activeStroke.Points.Count > 1)
             {
                 _activeStroke.Points.RemoveAt(_activeStroke.Points.Count - 1);
@@ -382,9 +489,10 @@ public partial class OverlayWindow : Window, IOverlayWindow
         if (_isDrawing)
         {
             _isDrawing = false;
-            UIElement? completed = _activeRect ?? (UIElement?)_activeStroke;
+            UIElement? completed = (UIElement?)_activeArrow ?? _activeRect ?? (UIElement?)_activeStroke;
             _activeStroke = null;
             _activeRect = null;
+            _activeArrow = null;
             ReleaseMouseCapture();
 
             if (_autoFadeEnabled && completed is not null)
@@ -423,40 +531,16 @@ public partial class OverlayWindow : Window, IOverlayWindow
             StrokeCanvas.Children.Remove(_activeRect);
             _activeRect = null;
         }
+        if (_activeArrow is not null)
+        {
+            StrokeCanvas.Children.Remove(_activeArrow);
+            _activeArrow = null;
+        }
         _activeStroke = null;
         ReleaseMouseCapture();
     }
 
-    private System.Windows.Point ApplyStraightLineConstraint(System.Windows.Point currentPoint)
-    {
-        // Calculate the distance and angle from stroke start to current point
-        var dx = currentPoint.X - _strokeStartPoint.X;
-        var dy = currentPoint.Y - _strokeStartPoint.Y;
-        var distance = Math.Sqrt(dx * dx + dy * dy);
-        
-        // Minimum distance threshold to avoid jittery behavior on small drags
-        if (distance < 5.0)
-        {
-            return currentPoint;
-        }
-        
-        // Calculate angle in radians
-        var angle = Math.Atan2(Math.Abs(dy), Math.Abs(dx));
-        
-        // 45-degree threshold: if angle < 45° (π/4), snap to horizontal; otherwise vertical
-        if (angle < Math.PI / 4)
-        {
-            // Horizontal constraint: keep Y, vary X
-            return new System.Windows.Point(currentPoint.X, _strokeStartPoint.Y);
-        }
-        else
-        {
-            // Vertical constraint: keep X, vary Y
-            return new System.Windows.Point(_strokeStartPoint.X, currentPoint.Y);
-        }
-    }
-
-    private static System.Windows.Shapes.Rectangle CreateRectangle(PenColor penColor, PenThickness thickness)
+    private static System.Windows.Shapes.Rectangle CreateRectangle(PenColor penColor, int thickness)
     {
         return new System.Windows.Shapes.Rectangle
         {
@@ -467,7 +551,65 @@ public partial class OverlayWindow : Window, IOverlayWindow
         };
     }
 
-    private static Polyline CreateStroke(PenColor penColor, DrawTool tool, PenThickness thickness)
+    private static System.Windows.Shapes.Path CreateArrow(PenColor penColor, int thickness)
+    {
+        return new System.Windows.Shapes.Path
+        {
+            Stroke = CreatePenBrush(penColor),
+            StrokeThickness = PenWidth(thickness),
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+            SnapsToDevicePixels = true,
+        };
+    }
+
+    private static System.Windows.Media.Geometry BuildArrowGeometry(
+        System.Windows.Point start,
+        System.Windows.Point tip,
+        double strokeThickness)
+    {
+        var dx = tip.X - start.X;
+        var dy = tip.Y - start.Y;
+        var length = Math.Sqrt(dx * dx + dy * dy);
+
+        var geometry = new System.Windows.Media.StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(start, isFilled: false, isClosed: false);
+
+            if (length < 0.5)
+            {
+                // Drag hasn't moved yet — just the start point.
+                geometry.Freeze();
+                return geometry;
+            }
+
+            var headLen = Math.Min(Math.Max(12.0, strokeThickness * 4.0), length);
+            var headWidth = headLen * 0.9;
+
+            var ux = dx / length;
+            var uy = dy / length;
+            var px = -uy;
+            var py = ux;
+
+            var baseX = tip.X - ux * headLen;
+            var baseY = tip.Y - uy * headLen;
+
+            var leftWing = new System.Windows.Point(baseX + px * (headWidth / 2.0), baseY + py * (headWidth / 2.0));
+            var rightWing = new System.Windows.Point(baseX - px * (headWidth / 2.0), baseY - py * (headWidth / 2.0));
+
+            ctx.LineTo(tip, isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(leftWing, isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(tip, isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(rightWing, isStroked: true, isSmoothJoin: false);
+        }
+
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static Polyline CreateStroke(PenColor penColor, DrawTool tool, int thickness)
     {
         var brush = CreatePenBrush(penColor);
 
@@ -496,19 +638,9 @@ public partial class OverlayWindow : Window, IOverlayWindow
         };
     }
 
-    private static double PenWidth(PenThickness thickness) => thickness switch
-    {
-        PenThickness.Thin => 2.0,
-        PenThickness.Thick => 7.0,
-        _ => 4.0,
-    };
+    private static double PenWidth(int thickness) => Math.Max(1.0, thickness);
 
-    private static double HighlighterWidth(PenThickness thickness) => thickness switch
-    {
-        PenThickness.Thin => 12.0,
-        PenThickness.Thick => 28.0,
-        _ => 18.0,
-    };
+    private static double HighlighterWidth(int thickness) => 6.0 + thickness * 3.0;
 
     private static SolidColorBrush CreatePenBrush(PenColor penColor)
     {
@@ -520,6 +652,9 @@ public partial class OverlayWindow : Window, IOverlayWindow
             PenColor.Yellow => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0xE6, 0x1A)),
             PenColor.White => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF)),
             PenColor.Magenta => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x2E, 0xB5)),
+            PenColor.Orange => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x8A, 0x1E)),
+            PenColor.Cyan => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x22, 0xDD, 0xE6)),
+            PenColor.Black => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x10, 0x10, 0x10)),
             _ => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x20, 0x20)),
         };
     }

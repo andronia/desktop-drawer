@@ -1,180 +1,109 @@
-# Desktop Ink
+# DesktopInk
 
-A lightweight, always-on-top drawing overlay application for Windows that allows you to annotate your screen with ink strokes.
+Lightweight, always-on-top screen-annotation overlay for Windows. Draw, highlight, shape, and arrow on top of anything — browsers, slides, videos, live screenshares. Built for presenters, course creators, and anyone who wants a quick pointing/annotation layer over the desktop.
 
-## Screenshot
+This is a fork of [atman-33/desktop-ink](https://github.com/atman-33/desktop-ink) with added tools, a redesigned palette, and a proper Windows installer.
 
-![Desktop Ink Overview](docs/images/screenshot-overview.png)
+## Install
+
+Grab the latest installer from the [Releases page](https://github.com/andronia/desktop-drawer/releases/latest) and double-click it.
+
+- Per-user install — no admin prompt, no UAC
+- ~52 MB installer, no .NET install required (runtime is bundled)
+- Shows up normally in **Settings → Apps → Installed apps** with a clean uninstaller
+
+> **SmartScreen:** on first launch Windows shows "unknown publisher" because the installer isn't code-signed. Click **More info → Run anyway**. The app makes zero network requests by default.
 
 ## Features
 
-- **Multi-Monitor Support**: Works seamlessly across multiple displays (draw on the monitor with the control palette)
-- **Transparent Overlay**: Draw directly on top of any application
-- **Multiple Drawing Modes**:
-  - Permanent Draw Mode: Toggle on/off with hotkey or control palette
-  - Temporary Draw Mode: Quick annotation with Alt double-click + hold
-- **Straight Line Drawing**: Hold Shift while dragging to constrain strokes to horizontal or vertical lines
-- **Pen Color Cycling**: Cycle through red, blue, and green for new strokes
-- **Control Palette**: Always-accessible floating control panel
-- **Per-Monitor DPI Support**: Crisp rendering on high-resolution displays and seamless scaling across monitors
-- **Global Hotkeys**: Control the app from anywhere
-- **Update Notifications**: Optional startup prompt when a new GitHub release is available
+**Drawing tools**
+- **Pen** — freehand, hold `Shift` for a straight line at any angle
+- **Highlighter** — translucent, thicker stroke for highlighting text or regions
+- **Rectangle** — drag to draw outline; hold `Shift` to constrain to a square
+- **Arrow** — click-drag to draw a straight arrow pointing where you release
 
-## Requirements
+**Presentation helpers**
+- **Cursor spotlight** — a translucent yellow circle follows your cursor so viewers can track where you're pointing
+- **Auto-fade** — strokes fade out ~3 seconds after you lift the pen (Epic Pen style)
 
-- Windows 10/11
-- .NET 10.0
+**Styling**
+- **9-color palette** in a 3×3 grid: red, blue, green, yellow, white, magenta, orange, cyan, black. Direct-select, no cycling.
+- **Brush thickness slider** — 1 to 10, adjustable by drag or mouse wheel
 
-## Installation
+**App UX**
+- System-tray icon with show/hide, toggle draw, clear, quit
+- Single-instance guard (second launch activates the running instance)
+- Taskbar entry + Alt-Tab presence
+- Palette position persists across launches
+- Full multi-monitor support with per-monitor DPI
 
-1. Clone the repository
-2. Build the solution using Visual Studio or the command line:
-   ```cmd
-   scripts\build.cmd
-   ```
-3. Run the application:
-   ```cmd
-   scripts\run.cmd
-   ```
+## Hotkeys
 
-## Usage
+| Key | Action |
+|---|---|
+| `Win+Shift+D` | Toggle draw mode |
+| `Win+Shift+C` | Clear all strokes |
+| `Win+Shift+Q` | Quit the app |
+| `Alt` (double-tap + hold) | Temporary draw mode (auto-clears on release) |
+| `Alt+S` | Cycle pen color (in temporary draw mode) |
+| `Shift` while drawing | Straight line (pen) or square (rectangle) |
 
-### Update Notifications
+## Palette overview
 
-Desktop Ink checks for new GitHub releases on startup (after a short delay) and shows a modal dialog when an update is available.
+From top to bottom:
 
-**Note**: On the very first launch after installation, the version check is skipped to establish the current installed version as your baseline. You will only be notified about updates released *after* your initial installation.
+1. Draw mode toggle (blue when active)
+2. Highlighter toggle (amber when active)
+3. Rectangle toggle (amber when active)
+4. Arrow toggle (amber when active)
+5. Auto-fade toggle (teal when active)
+6. Cursor spotlight toggle (purple when active)
+7. Thickness slider (1–10, mouse-wheel adjustable)
+8. 3×3 color grid (active color shows a white ring)
+9. Clear all
+10. Quit
 
-You can open the download page, remind yourself later, or skip a specific version.
+The palette is draggable — move it to any monitor; drawing will engage on the monitor the palette is currently on.
 
-Settings are stored at `%APPDATA%\DesktopInk\settings.json` and can be edited manually:
+## Privacy
 
-```json
-{
-   "versionCheck": {
-      "enabled": true,
-      "skippedVersion": null,
-      "lastChecked": "2026-01-24T10:00:00Z"
-   }
-}
+Fully offline. No telemetry, no analytics, no crash reporting, no external dependencies that call home. The upstream GitHub update-check is **disabled by default** in this fork. If you want to re-enable it, edit `%APPDATA%\DesktopInk\settings.json` and set `versionCheck.enabled` to `true` (though it points at the original upstream repo, not this fork).
+
+The app writes exactly one file to disk: `%APPDATA%\DesktopInk\settings.json` (stores palette position and update-check preference). That's it.
+
+## Building from source
+
+Requires [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+
+```bat
+scripts\build.cmd       REM Debug + Release build
+scripts\run.cmd         REM Debug run
+scripts\test.cmd        REM xUnit tests
 ```
 
-### Starting the Application
+To produce an installer:
 
-Run `Desktop Ink` and it will start with transparent overlay windows on all your monitors. The control palette will appear as a small floating window.
-
-### Drawing Modes
-
-#### Permanent Draw Mode
-
-Toggle persistent drawing mode on or off:
-
-- **Keyboard**: Press `Win+Shift+D`
-- **Control Palette**: Click the "Draw Mode" button
-
-When draw mode is active, you can draw ink strokes only on the monitor where the control palette is located. Move the palette to another monitor to change where drawing is enabled. Strokes remain until you clear them manually.
-
-#### Temporary Draw Mode (Quick Annotation)
-
-For quick, temporary annotations:
-
-1. **Double-click the Alt key** rapidly (within system double-click time)
-2. **Hold down the Alt key** while drawing
-3. **Release the Alt key** - all strokes automatically clear and you return to pass-through mode
-
-This mode is perfect for brief annotations without needing to toggle modes or manually clear strokes. Drawing is still limited to the palette's monitor, so move the palette if you want to annotate another display. You can find a reminder for this shortcut in the tooltip of the **Toggle Draw Mode** button on the control palette.
-
-While in temporary draw mode, you can cycle pen colors with `Alt+S`.
-
-#### Straight Line Drawing
-
-To draw perfectly horizontal or vertical lines:
-
-1. Enter draw mode (permanent or temporary)
-2. **Hold down the Shift key** while dragging
-3. The stroke will automatically snap to horizontal or vertical based on the drag direction
-4. Release Shift to return to freehand drawing (mid-stroke transitions are supported)
-
-This feature works in both permanent and temporary draw modes.
-
-### Global Hotkeys
-
-The following hotkeys work even when Desktop Ink is not focused:
-
-| Hotkey | Action |
-|--------|--------|
-| `Win+Shift+D` | Toggle permanent draw/pass-through mode |
-| `Win+Shift+C` | Clear all ink strokes from all monitors |
-| `Win+Shift+Q` | Quit the application |
-| `Alt+S` | Cycle pen color (temporary draw mode only) |
-
-### Control Palette
-
-The control palette provides clickable buttons for:
-
-- **Toggle Draw Mode**: Switch between draw and pass-through mode. The tooltip displays the `Win+Shift+D` shortcut and the **Alt+Double-click** hint for temporary draw mode.
-- **Cycle Color**: Switch between red, blue, and green for new strokes
-- **Clear All**: Remove all ink strokes
-- **Quit**: Exit the application
-
-The palette is:
-- Always on top of other windows
-- Semi-transparent for minimal obstruction
-- Draggable - click and drag to reposition
-
-### Pass-Through Mode
-
-When not in draw mode, the overlay windows are completely transparent to mouse input, allowing you to interact with applications underneath as normal.
-
-## Building from Source
-
-### Debug Build
-
-```cmd
-scripts\build.cmd
+```bat
+scripts\make-installer.cmd
 ```
 
-### Release Build
-
-```cmd
-dotnet build src\DesktopInk\DesktopInk.csproj -c Release
-```
-
-### Running
-
-```cmd
-# Run debug build
-scripts\run.cmd
-
-# Run release build
-scripts\run-release.cmd
-```
+Output: `publish\installer\DesktopInkSetup-{version}.exe`. Requires [Inno Setup 6](https://jrsoftware.org/isdl.php) (installable via `winget install JRSoftware.InnoSetup`).
 
 ## Architecture
 
-Desktop Ink is built using WPF and consists of:
+- **Overlay windows** — one transparent, click-through, always-on-top window per monitor. Drawing happens on a WPF `Canvas` child.
+- **Control palette** — floating draggable window (`ControlWindow`) with the toolbar UI.
+- **Tray manager** — `System.Windows.Forms.NotifyIcon` for the system tray + context menu.
+- **Keyboard hook** — low-level `WH_KEYBOARD_LL` hook for the Alt double-tap temporary-mode gesture.
+- **Overlay manager** — fan-out controller that routes palette commands to the per-monitor overlays.
 
-- **Overlay Windows**: One per monitor, full-screen transparent windows for drawing
-- **Control Window**: Draggable palette with control buttons
-- **Keyboard Hook Manager**: Low-level keyboard hook for global hotkeys and temporary mode detection
-- **Overlay Manager**: Manages multi-monitor overlay lifecycle
+The stack is **C# / WPF / .NET 10**, Windows-only. No third-party runtime dependencies beyond `System.Text.Json`.
 
-## Development
+## Credits
 
-For contributors and maintainers:
-
-- [Release Process](docs/RELEASE.md) - Version management and release workflow
+- Upstream: [atman-33/desktop-ink](https://github.com/atman-33/desktop-ink) (MIT) — the original transparent-overlay foundation, multi-monitor DPI handling, and keyboard-hook temporary-mode gesture.
+- This fork adds highlighter/rectangle/arrow tools, cursor spotlight, auto-fade, 9-color palette, thickness slider, tray icon, single-instance guard, persistent palette position, and Inno Setup packaging.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+MIT — see [LICENSE](LICENSE). Upstream copyright is preserved in that file per the MIT terms.

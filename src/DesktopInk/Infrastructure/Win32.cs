@@ -135,6 +135,10 @@ public static class Win32
     [DllImport("user32.dll")]
     internal static extern IntPtr MonitorFromPoint(Point pt, uint dwFlags);
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorPos(out Point lpPoint);
+
     internal enum MonitorDpiType
     {
         EffectiveDpi = 0,

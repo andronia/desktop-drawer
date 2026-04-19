@@ -18,6 +18,9 @@ public sealed class AppSettings
     [JsonPropertyName("versionCheck")]
     public VersionCheckSettings VersionCheck { get; set; } = new();
 
+    [JsonPropertyName("palette")]
+    public PaletteSettings Palette { get; set; } = new();
+
     public static AppSettings Load(string? pathOverride = null)
     {
         var path = pathOverride ?? ResolveSettingsPath();
@@ -34,6 +37,7 @@ public sealed class AppSettings
             var json = File.ReadAllText(path, Encoding.UTF8);
             var settingsFromFile = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
             settingsFromFile.VersionCheck ??= new VersionCheckSettings();
+            settingsFromFile.Palette ??= new PaletteSettings();
             return settingsFromFile;
         }
         catch (Exception ex)
@@ -80,4 +84,11 @@ public sealed class VersionCheckSettings
     public string? SkippedVersion { get; set; }
 
     public DateTime? LastChecked { get; set; }
+}
+
+public sealed class PaletteSettings
+{
+    public double? Left { get; set; }
+
+    public double? Top { get; set; }
 }

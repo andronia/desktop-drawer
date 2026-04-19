@@ -41,7 +41,7 @@ if errorlevel 1 (
 
 echo.
 echo + Installer built successfully.
-echo   Output: publish\installer\DesktopInkSetup-1.4.2.exe
+echo   Output: publish\installer\DesktopInkSetup-1.5.0.exe
 echo.
 
 popd

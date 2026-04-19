@@ -18,23 +18,31 @@ public sealed class OverlayManager : IDisposable
     private bool _isDisposed;
     private PenColor _penColor = PenColor.Red;
     private DrawTool _tool = DrawTool.Pen;
-    private PenThickness _thickness = PenThickness.Medium;
+    private int _thickness = DefaultThickness;
     private bool _autoFadeEnabled;
+
+    public const int MinThickness = 1;
+    public const int MaxThickness = 10;
+    public const int DefaultThickness = 4;
+    private bool _spotlightEnabled;
     private Win32.Rect? _paletteMonitorBoundsPx;
 
     public event EventHandler<OverlayMode>? ModeChanged;
     public event EventHandler<PenColor>? PenColorChanged;
     public event EventHandler<DrawTool>? ToolChanged;
-    public event EventHandler<PenThickness>? ThicknessChanged;
+    public event EventHandler<int>? ThicknessChanged;
     public event EventHandler<bool>? AutoFadeChanged;
+    public event EventHandler<bool>? SpotlightChanged;
 
     public PenColor CurrentPenColor => _penColor;
 
     public DrawTool CurrentTool => _tool;
 
-    public PenThickness CurrentThickness => _thickness;
+    public int CurrentThickness => _thickness;
 
     public bool IsAutoFadeEnabled => _autoFadeEnabled;
+
+    public bool IsSpotlightEnabled => _spotlightEnabled;
 
     public OverlayManager()
         : this(MonitorEnumerator.GetMonitors, monitor => new OverlayWindow(monitor.BoundsPx, monitor.DpiX, monitor.DpiY))
@@ -107,6 +115,7 @@ public sealed class OverlayManager : IDisposable
             overlay.SetTool(_tool);
             overlay.SetThickness(_thickness);
             overlay.SetAutoFade(_autoFadeEnabled);
+            overlay.SetSpotlight(_spotlightEnabled);
             overlay.Show();
             _overlays.Add(overlay);
         }
@@ -293,7 +302,10 @@ public sealed class OverlayManager : IDisposable
             PenColor.Green => PenColor.Yellow,
             PenColor.Yellow => PenColor.White,
             PenColor.White => PenColor.Magenta,
-            PenColor.Magenta => PenColor.Red,
+            PenColor.Magenta => PenColor.Orange,
+            PenColor.Orange => PenColor.Cyan,
+            PenColor.Cyan => PenColor.Black,
+            PenColor.Black => PenColor.Red,
             _ => PenColor.Red,
         };
 
@@ -332,14 +344,20 @@ public sealed class OverlayManager : IDisposable
         SetTool(_tool == DrawTool.Rectangle ? DrawTool.Pen : DrawTool.Rectangle);
     }
 
-    public void SelectThickness(PenThickness thickness)
+    public void ToggleArrow()
     {
-        if (_thickness == thickness)
+        SetTool(_tool == DrawTool.Arrow ? DrawTool.Pen : DrawTool.Arrow);
+    }
+
+    public void SelectThickness(int thickness)
+    {
+        var clamped = Math.Clamp(thickness, MinThickness, MaxThickness);
+        if (_thickness == clamped)
         {
             return;
         }
 
-        _thickness = thickness;
+        _thickness = clamped;
 
         foreach (var overlay in _overlays.ToList())
         {
@@ -359,6 +377,18 @@ public sealed class OverlayManager : IDisposable
         }
 
         AutoFadeChanged?.Invoke(this, _autoFadeEnabled);
+    }
+
+    public void ToggleSpotlight()
+    {
+        _spotlightEnabled = !_spotlightEnabled;
+
+        foreach (var overlay in _overlays.ToList())
+        {
+            overlay.SetSpotlight(_spotlightEnabled);
+        }
+
+        SpotlightChanged?.Invoke(this, _spotlightEnabled);
     }
 
     private void SetTool(DrawTool tool)

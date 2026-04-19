@@ -136,11 +136,15 @@ public class OverlayManagerPerMonitorTests
         {
         }
 
-        public void SetThickness(PenThickness thickness)
+        public void SetThickness(int thickness)
         {
         }
 
         public void SetAutoFade(bool enabled)
+        {
+        }
+
+        public void SetSpotlight(bool enabled)
         {
         }
 

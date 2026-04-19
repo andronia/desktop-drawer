@@ -8,4 +8,7 @@ public enum PenColor
     Yellow,
     White,
     Magenta,
+    Orange,
+    Cyan,
+    Black,
 }

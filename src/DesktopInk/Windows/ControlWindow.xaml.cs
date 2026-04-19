@@ -14,8 +14,8 @@ public partial class ControlWindow : Window
     private const int HotkeyToggleDraw = 1;
     private const int HotkeyClearAll = 2;
     private const int HotkeyQuit = 3;
-    private const double LogicalWidth = 56.0;
-    private const double LogicalHeight = 204.0;
+    private const double LogicalWidth = 88.0;
+    private const double LogicalHeight = 382.0;
 
     private readonly OverlayManager _overlayManager;
     private readonly KeyboardHookManager _keyboardHook;
@@ -36,8 +36,14 @@ public partial class ControlWindow : Window
         // Subscribe to mode changes for visual feedback
         _overlayManager.ModeChanged += OnModeChanged;
         _overlayManager.PenColorChanged += OnPenColorChanged;
+        _overlayManager.ToolChanged += OnToolChanged;
+        _overlayManager.ThicknessChanged += OnThicknessChanged;
+        _overlayManager.AutoFadeChanged += OnAutoFadeChanged;
 
-        UpdateColorCycleButton(_overlayManager.CurrentPenColor);
+        UpdateColorSwatchSelection(_overlayManager.CurrentPenColor);
+        UpdateToolButtonAppearance(_overlayManager.CurrentTool);
+        UpdateThicknessSelection(_overlayManager.CurrentThickness);
+        UpdateFadeButtonAppearance(_overlayManager.IsAutoFadeEnabled);
 
         SourceInitialized += OnSourceInitialized;
         Closed += OnClosed;
@@ -99,8 +105,10 @@ public partial class ControlWindow : Window
             return;
         }
 
+        // Keep layered (for transparency) but drop the tool-window flag so the palette
+        // shows up in the taskbar and Alt+Tab like a normal app window.
         var exStyle = Win32.GetWindowLongPtr(_hwnd, Win32.GwlExStyle).ToInt64();
-        exStyle |= Win32.WsExToolWindow;
+        exStyle &= ~Win32.WsExToolWindow;
         exStyle |= Win32.WsExLayered;
         Win32.SetWindowLongPtr(_hwnd, Win32.GwlExStyle, new IntPtr(exStyle));
     }
@@ -173,6 +181,9 @@ public partial class ControlWindow : Window
 
         _overlayManager.ModeChanged -= OnModeChanged;
         _overlayManager.PenColorChanged -= OnPenColorChanged;
+        _overlayManager.ToolChanged -= OnToolChanged;
+        _overlayManager.ThicknessChanged -= OnThicknessChanged;
+        _overlayManager.AutoFadeChanged -= OnAutoFadeChanged;
 
         _keyboardHook.TemporaryModeActivated -= OnTemporaryModeActivated;
         _keyboardHook.TemporaryModeDeactivated -= OnTemporaryModeDeactivated;
@@ -388,9 +399,25 @@ public partial class ControlWindow : Window
             && left.Bottom == right.Bottom;
     }
 
-    private void OnColorCycleClick(object sender, RoutedEventArgs e)
+    private void OnColorSwatchClick(object sender, RoutedEventArgs e)
     {
-        _overlayManager.CycleColor();
+        if (sender is not System.Windows.Controls.Button button)
+        {
+            return;
+        }
+
+        var color = button.Name switch
+        {
+            nameof(RedSwatch) => PenColor.Red,
+            nameof(BlueSwatch) => PenColor.Blue,
+            nameof(GreenSwatch) => PenColor.Green,
+            nameof(YellowSwatch) => PenColor.Yellow,
+            nameof(WhiteSwatch) => PenColor.White,
+            nameof(MagentaSwatch) => PenColor.Magenta,
+            _ => PenColor.Red,
+        };
+
+        _overlayManager.SelectColor(color);
     }
 
     private void OnModeChanged(object? sender, OverlayMode mode)
@@ -400,7 +427,7 @@ public partial class ControlWindow : Window
 
     private void OnPenColorChanged(object? sender, PenColor color)
     {
-        UpdateColorCycleButton(color);
+        UpdateColorSwatchSelection(color);
     }
 
     private void UpdateToggleButtonAppearance(OverlayMode mode)
@@ -410,25 +437,99 @@ public partial class ControlWindow : Window
         ToggleButton.Tag = mode.ToString();
     }
 
-    private void UpdateColorCycleButton(PenColor color)
+    private void UpdateColorSwatchSelection(PenColor color)
     {
-        if (ColorCycleSwatch is null)
+        if (RedSwatch is null)
         {
             return;
         }
 
-        ColorCycleSwatch.Fill = CreateBrush(color);
+        RedSwatch.Tag = color == PenColor.Red ? "Active" : "Inactive";
+        BlueSwatch.Tag = color == PenColor.Blue ? "Active" : "Inactive";
+        GreenSwatch.Tag = color == PenColor.Green ? "Active" : "Inactive";
+        YellowSwatch.Tag = color == PenColor.Yellow ? "Active" : "Inactive";
+        WhiteSwatch.Tag = color == PenColor.White ? "Active" : "Inactive";
+        MagentaSwatch.Tag = color == PenColor.Magenta ? "Active" : "Inactive";
     }
 
-    private static System.Windows.Media.Brush CreateBrush(PenColor color)
+    private void OnHighlighterClick(object sender, RoutedEventArgs e)
     {
-        return color switch
+        _overlayManager.ToggleHighlighter();
+    }
+
+    private void OnRectangleClick(object sender, RoutedEventArgs e)
+    {
+        _overlayManager.ToggleRectangle();
+    }
+
+    private void OnToolChanged(object? sender, DrawTool tool)
+    {
+        UpdateToolButtonAppearance(tool);
+    }
+
+    private void UpdateToolButtonAppearance(DrawTool tool)
+    {
+        if (HighlighterButton is null || RectangleButton is null)
         {
-            PenColor.Red => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x00, 0x00)),
-            PenColor.Blue => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0x00, 0xFF)),
-            PenColor.Green => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0xFF, 0x00)),
-            _ => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x00, 0x00)),
+            return;
+        }
+
+        HighlighterButton.Tag = tool == DrawTool.Highlighter ? "Active" : "Inactive";
+        RectangleButton.Tag = tool == DrawTool.Rectangle ? "Active" : "Inactive";
+    }
+
+    private void OnThicknessClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button)
+        {
+            return;
+        }
+
+        var thickness = button.Name switch
+        {
+            nameof(ThinButton) => PenThickness.Thin,
+            nameof(ThickButton) => PenThickness.Thick,
+            _ => PenThickness.Medium,
         };
+
+        _overlayManager.SelectThickness(thickness);
+    }
+
+    private void OnThicknessChanged(object? sender, PenThickness thickness)
+    {
+        UpdateThicknessSelection(thickness);
+    }
+
+    private void UpdateThicknessSelection(PenThickness thickness)
+    {
+        if (ThinButton is null)
+        {
+            return;
+        }
+
+        ThinButton.Tag = thickness == PenThickness.Thin ? "Active" : "Inactive";
+        MediumButton.Tag = thickness == PenThickness.Medium ? "Active" : "Inactive";
+        ThickButton.Tag = thickness == PenThickness.Thick ? "Active" : "Inactive";
+    }
+
+    private void OnFadeClick(object sender, RoutedEventArgs e)
+    {
+        _overlayManager.ToggleAutoFade();
+    }
+
+    private void OnAutoFadeChanged(object? sender, bool enabled)
+    {
+        UpdateFadeButtonAppearance(enabled);
+    }
+
+    private void UpdateFadeButtonAppearance(bool enabled)
+    {
+        if (FadeButton is null)
+        {
+            return;
+        }
+
+        FadeButton.Tag = enabled ? "Active" : "Inactive";
     }
 
     private void OnClearClick(object sender, RoutedEventArgs e)

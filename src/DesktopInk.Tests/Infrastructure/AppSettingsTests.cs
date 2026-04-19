@@ -14,7 +14,7 @@ public class AppSettingsTests
 
         var settings = AppSettings.Load(path);
 
-        settings.VersionCheck.Enabled.Should().BeTrue();
+        settings.VersionCheck.Enabled.Should().BeFalse();
         settings.VersionCheck.SkippedVersion.Should().BeNull();
         settings.VersionCheck.LastChecked.Should().BeNull();
         File.Exists(path).Should().BeTrue();

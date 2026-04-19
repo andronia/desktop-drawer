@@ -17,12 +17,24 @@ public sealed class OverlayManager : IDisposable
     private bool _isTemporaryDrawMode;
     private bool _isDisposed;
     private PenColor _penColor = PenColor.Red;
+    private DrawTool _tool = DrawTool.Pen;
+    private PenThickness _thickness = PenThickness.Medium;
+    private bool _autoFadeEnabled;
     private Win32.Rect? _paletteMonitorBoundsPx;
 
     public event EventHandler<OverlayMode>? ModeChanged;
     public event EventHandler<PenColor>? PenColorChanged;
+    public event EventHandler<DrawTool>? ToolChanged;
+    public event EventHandler<PenThickness>? ThicknessChanged;
+    public event EventHandler<bool>? AutoFadeChanged;
 
     public PenColor CurrentPenColor => _penColor;
+
+    public DrawTool CurrentTool => _tool;
+
+    public PenThickness CurrentThickness => _thickness;
+
+    public bool IsAutoFadeEnabled => _autoFadeEnabled;
 
     public OverlayManager()
         : this(MonitorEnumerator.GetMonitors, monitor => new OverlayWindow(monitor.BoundsPx, monitor.DpiX, monitor.DpiY))
@@ -92,6 +104,9 @@ public sealed class OverlayManager : IDisposable
         {
             var overlay = _overlayFactory(monitor);
             overlay.SetPenColor(_penColor);
+            overlay.SetTool(_tool);
+            overlay.SetThickness(_thickness);
+            overlay.SetAutoFade(_autoFadeEnabled);
             overlay.Show();
             _overlays.Add(overlay);
         }
@@ -275,11 +290,19 @@ public sealed class OverlayManager : IDisposable
         {
             PenColor.Red => PenColor.Blue,
             PenColor.Blue => PenColor.Green,
-            PenColor.Green => PenColor.Red,
+            PenColor.Green => PenColor.Yellow,
+            PenColor.Yellow => PenColor.White,
+            PenColor.White => PenColor.Magenta,
+            PenColor.Magenta => PenColor.Red,
             _ => PenColor.Red,
         };
 
         SetPenColor(nextColor);
+    }
+
+    public void SelectColor(PenColor color)
+    {
+        SetPenColor(color);
     }
 
     private void SetPenColor(PenColor color)
@@ -297,6 +320,62 @@ public sealed class OverlayManager : IDisposable
         }
 
         PenColorChanged?.Invoke(this, _penColor);
+    }
+
+    public void ToggleHighlighter()
+    {
+        SetTool(_tool == DrawTool.Highlighter ? DrawTool.Pen : DrawTool.Highlighter);
+    }
+
+    public void ToggleRectangle()
+    {
+        SetTool(_tool == DrawTool.Rectangle ? DrawTool.Pen : DrawTool.Rectangle);
+    }
+
+    public void SelectThickness(PenThickness thickness)
+    {
+        if (_thickness == thickness)
+        {
+            return;
+        }
+
+        _thickness = thickness;
+
+        foreach (var overlay in _overlays.ToList())
+        {
+            overlay.SetThickness(_thickness);
+        }
+
+        ThicknessChanged?.Invoke(this, _thickness);
+    }
+
+    public void ToggleAutoFade()
+    {
+        _autoFadeEnabled = !_autoFadeEnabled;
+
+        foreach (var overlay in _overlays.ToList())
+        {
+            overlay.SetAutoFade(_autoFadeEnabled);
+        }
+
+        AutoFadeChanged?.Invoke(this, _autoFadeEnabled);
+    }
+
+    private void SetTool(DrawTool tool)
+    {
+        if (_tool == tool)
+        {
+            return;
+        }
+
+        _tool = tool;
+
+        foreach (var overlay in _overlays.ToList())
+        {
+            overlay.SetTool(_tool);
+        }
+
+        ToolChanged?.Invoke(this, _tool);
     }
 
     public void Quit()

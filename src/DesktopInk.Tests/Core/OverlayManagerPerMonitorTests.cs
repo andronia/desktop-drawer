@@ -132,6 +132,18 @@ public class OverlayManagerPerMonitorTests
         {
         }
 
+        public void SetTool(DrawTool tool)
+        {
+        }
+
+        public void SetThickness(PenThickness thickness)
+        {
+        }
+
+        public void SetAutoFade(bool enabled)
+        {
+        }
+
         public void Show()
         {
         }

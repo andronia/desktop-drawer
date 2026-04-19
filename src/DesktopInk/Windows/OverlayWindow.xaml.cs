@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using DesktopInk.Core;
 using DesktopInk.Infrastructure;
@@ -23,8 +24,15 @@ public partial class OverlayWindow : Window, IOverlayWindow
     private OverlayMode _mode = OverlayMode.PassThrough;
     private bool _isDrawing;
     private Polyline? _activeStroke;
+    private System.Windows.Shapes.Rectangle? _activeRect;
     private System.Windows.Point _strokeStartPoint;
     private PenColor _penColor = PenColor.Red;
+    private DrawTool _tool = DrawTool.Pen;
+    private PenThickness _thickness = PenThickness.Medium;
+    private bool _autoFadeEnabled;
+
+    private static readonly TimeSpan AutoFadeHold = TimeSpan.FromMilliseconds(700);
+    private static readonly TimeSpan AutoFadeDuration = TimeSpan.FromMilliseconds(2300);
 
     internal OverlayWindow(Win32.Rect boundsPx, uint dpiX, uint dpiY)
     {
@@ -84,6 +92,21 @@ public partial class OverlayWindow : Window, IOverlayWindow
         {
             IndicatorText.Foreground = CreatePenBrush(_penColor);
         }
+    }
+
+    public void SetTool(DrawTool tool)
+    {
+        _tool = tool;
+    }
+
+    public void SetThickness(PenThickness thickness)
+    {
+        _thickness = thickness;
+    }
+
+    public void SetAutoFade(bool enabled)
+    {
+        _autoFadeEnabled = enabled;
     }
 
     private void OnSourceInitialized(object? sender, System.EventArgs e)
@@ -251,20 +274,23 @@ public partial class OverlayWindow : Window, IOverlayWindow
             return;
         }
 
-        try
-        {
-            var p = e.GetPosition(StrokeCanvas);
-            AppLog.Info($"OverlayWindow MouseDown hwnd=0x{_hwnd.ToInt64():X} p=({p.X:0.##},{p.Y:0.##})");
-        }
-        catch { }
-
-        _isDrawing = true;
-        _activeStroke = CreateStroke(_penColor);
-
         var point = e.GetPosition(StrokeCanvas);
         _strokeStartPoint = point;
-        _activeStroke.Points.Add(point);
-        StrokeCanvas.Children.Add(_activeStroke);
+        _isDrawing = true;
+
+        if (_tool == DrawTool.Rectangle)
+        {
+            _activeRect = CreateRectangle(_penColor, _thickness);
+            System.Windows.Controls.Canvas.SetLeft(_activeRect, point.X);
+            System.Windows.Controls.Canvas.SetTop(_activeRect, point.Y);
+            StrokeCanvas.Children.Add(_activeRect);
+        }
+        else
+        {
+            _activeStroke = CreateStroke(_penColor, _tool, _thickness);
+            _activeStroke.Points.Add(point);
+            StrokeCanvas.Children.Add(_activeStroke);
+        }
 
         CaptureMouse();
         e.Handled = true;
@@ -272,7 +298,7 @@ public partial class OverlayWindow : Window, IOverlayWindow
 
     private void OnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (_mode != OverlayMode.Draw || !_isDrawing || _activeStroke is null)
+        if (_mode != OverlayMode.Draw || !_isDrawing)
         {
             return;
         }
@@ -284,34 +310,59 @@ public partial class OverlayWindow : Window, IOverlayWindow
         }
 
         var point = e.GetPosition(StrokeCanvas);
-        
-        // Check if Shift key is held for straight line constraint
         var isShiftHeld = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
-        
+
+        if (_tool == DrawTool.Rectangle && _activeRect is not null)
+        {
+            UpdateActiveRectangle(point, isShiftHeld);
+            e.Handled = true;
+            return;
+        }
+
+        if (_activeStroke is null)
+        {
+            return;
+        }
+
         if (isShiftHeld)
         {
-            // Apply straight line constraint (horizontal or vertical)
             point = ApplyStraightLineConstraint(point);
-            
-            // Keep only start point and current constrained point
+
             if (_activeStroke.Points.Count > 1)
             {
                 _activeStroke.Points.RemoveAt(_activeStroke.Points.Count - 1);
             }
         }
-        
-        _activeStroke.Points.Add(point);
 
-        if ((_activeStroke.Points.Count % 50) == 0)
+        _activeStroke.Points.Add(point);
+        e.Handled = true;
+    }
+
+    private void UpdateActiveRectangle(System.Windows.Point current, bool squareConstraint)
+    {
+        if (_activeRect is null)
         {
-            try
-            {
-                AppLog.Info($"OverlayWindow MouseMove hwnd=0x{_hwnd.ToInt64():X} points={_activeStroke.Points.Count} last=({point.X:0.##},{point.Y:0.##})");
-            }
-            catch { }
+            return;
         }
 
-        e.Handled = true;
+        var start = _strokeStartPoint;
+        var width = Math.Abs(current.X - start.X);
+        var height = Math.Abs(current.Y - start.Y);
+
+        if (squareConstraint)
+        {
+            var size = Math.Max(width, height);
+            width = size;
+            height = size;
+        }
+
+        var left = current.X < start.X ? start.X - width : start.X;
+        var top = current.Y < start.Y ? start.Y - height : start.Y;
+
+        System.Windows.Controls.Canvas.SetLeft(_activeRect, left);
+        System.Windows.Controls.Canvas.SetTop(_activeRect, top);
+        _activeRect.Width = width;
+        _activeRect.Height = height;
     }
 
     private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -331,15 +382,47 @@ public partial class OverlayWindow : Window, IOverlayWindow
         if (_isDrawing)
         {
             _isDrawing = false;
+            UIElement? completed = _activeRect ?? (UIElement?)_activeStroke;
             _activeStroke = null;
+            _activeRect = null;
             ReleaseMouseCapture();
+
+            if (_autoFadeEnabled && completed is not null)
+            {
+                StartFadeOut(completed);
+            }
+
             e.Handled = true;
         }
+    }
+
+    private void StartFadeOut(UIElement element)
+    {
+        var animation = new DoubleAnimation
+        {
+            From = 1.0,
+            To = 0.0,
+            BeginTime = AutoFadeHold,
+            Duration = new Duration(AutoFadeDuration),
+        };
+
+        animation.Completed += (_, _) =>
+        {
+            // The stroke may already be gone if ClearAll ran mid-fade; Remove is safe in that case.
+            StrokeCanvas.Children.Remove(element);
+        };
+
+        element.BeginAnimation(UIElement.OpacityProperty, animation);
     }
 
     private void CancelActiveStroke()
     {
         _isDrawing = false;
+        if (_activeRect is not null)
+        {
+            StrokeCanvas.Children.Remove(_activeRect);
+            _activeRect = null;
+        }
         _activeStroke = null;
         ReleaseMouseCapture();
     }
@@ -373,12 +456,39 @@ public partial class OverlayWindow : Window, IOverlayWindow
         }
     }
 
-    private static Polyline CreateStroke(PenColor penColor)
+    private static System.Windows.Shapes.Rectangle CreateRectangle(PenColor penColor, PenThickness thickness)
     {
-        return new Polyline
+        return new System.Windows.Shapes.Rectangle
         {
             Stroke = CreatePenBrush(penColor),
-            StrokeThickness = 3,
+            StrokeThickness = PenWidth(thickness),
+            Fill = System.Windows.Media.Brushes.Transparent,
+            SnapsToDevicePixels = true,
+        };
+    }
+
+    private static Polyline CreateStroke(PenColor penColor, DrawTool tool, PenThickness thickness)
+    {
+        var brush = CreatePenBrush(penColor);
+
+        if (tool == DrawTool.Highlighter)
+        {
+            brush.Opacity = 0.35;
+            return new Polyline
+            {
+                Stroke = brush,
+                StrokeThickness = HighlighterWidth(thickness),
+                StrokeStartLineCap = PenLineCap.Flat,
+                StrokeEndLineCap = PenLineCap.Flat,
+                StrokeLineJoin = PenLineJoin.Round,
+                SnapsToDevicePixels = true,
+            };
+        }
+
+        return new Polyline
+        {
+            Stroke = brush,
+            StrokeThickness = PenWidth(thickness),
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             StrokeLineJoin = PenLineJoin.Round,
@@ -386,14 +496,31 @@ public partial class OverlayWindow : Window, IOverlayWindow
         };
     }
 
-    private static System.Windows.Media.Brush CreatePenBrush(PenColor penColor)
+    private static double PenWidth(PenThickness thickness) => thickness switch
+    {
+        PenThickness.Thin => 2.0,
+        PenThickness.Thick => 7.0,
+        _ => 4.0,
+    };
+
+    private static double HighlighterWidth(PenThickness thickness) => thickness switch
+    {
+        PenThickness.Thin => 12.0,
+        PenThickness.Thick => 28.0,
+        _ => 18.0,
+    };
+
+    private static SolidColorBrush CreatePenBrush(PenColor penColor)
     {
         return penColor switch
         {
-            PenColor.Red => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x00, 0x00)),
-            PenColor.Blue => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0x00, 0xFF)),
-            PenColor.Green => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0xFF, 0x00)),
-            _ => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x00, 0x00)),
+            PenColor.Red => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x20, 0x20)),
+            PenColor.Blue => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x1E, 0x6F, 0xFF)),
+            PenColor.Green => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x22, 0xDD, 0x55)),
+            PenColor.Yellow => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0xE6, 0x1A)),
+            PenColor.White => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF)),
+            PenColor.Magenta => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x2E, 0xB5)),
+            _ => new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x20, 0x20)),
         };
     }
 

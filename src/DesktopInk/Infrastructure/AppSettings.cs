@@ -75,7 +75,7 @@ public sealed class AppSettings
 
 public sealed class VersionCheckSettings
 {
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
 
     public string? SkippedVersion { get; set; }
 

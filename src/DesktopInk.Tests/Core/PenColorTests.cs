@@ -11,16 +11,22 @@ public class PenColorTests
     {
         var values = Enum.GetValues<PenColor>();
 
-        values.Should().HaveCount(3);
+        values.Should().HaveCount(6);
         values.Should().Contain(PenColor.Red);
         values.Should().Contain(PenColor.Blue);
         values.Should().Contain(PenColor.Green);
+        values.Should().Contain(PenColor.Yellow);
+        values.Should().Contain(PenColor.White);
+        values.Should().Contain(PenColor.Magenta);
     }
 
     [Theory]
     [InlineData(PenColor.Red, 0)]
     [InlineData(PenColor.Blue, 1)]
     [InlineData(PenColor.Green, 2)]
+    [InlineData(PenColor.Yellow, 3)]
+    [InlineData(PenColor.White, 4)]
+    [InlineData(PenColor.Magenta, 5)]
     public void PenColor_ShouldHaveStableOrder(PenColor color, int expectedValue)
     {
         ((int)color).Should().Be(expectedValue);

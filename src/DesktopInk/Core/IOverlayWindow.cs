@@ -12,6 +12,12 @@ internal interface IOverlayWindow
 
     void SetPenColor(PenColor color);
 
+    void SetTool(DrawTool tool);
+
+    void SetThickness(PenThickness thickness);
+
+    void SetAutoFade(bool enabled);
+
     void Show();
 
     void Close();

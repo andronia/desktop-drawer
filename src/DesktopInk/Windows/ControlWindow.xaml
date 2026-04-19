@@ -3,14 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DesktopInk.Controls"
         Icon="/Assets/app-icon.ico"
-        Width="56"
-        Height="204"
+        Width="88"
+        Height="382"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
         Background="Transparent"
         Topmost="True"
-        ShowInTaskbar="False"
+        ShowInTaskbar="True"
         WindowStartupLocation="Manual">
     <Window.Resources>
         <Style x:Key="IconButtonStyle" TargetType="Button">
@@ -19,7 +19,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" 
+                        <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="4">
@@ -37,14 +37,13 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        
+
         <Style x:Key="ToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
             <Style.Triggers>
                 <!-- Draw mode active: Windows Blue -->
                 <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="Draw">
                     <Setter Property="Background" Value="#DC0078D4"/>
                 </DataTrigger>
-                <!-- Hover effect for active state -->
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
                         <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="Draw"/>
@@ -54,7 +53,39 @@
                 </MultiDataTrigger>
             </Style.Triggers>
         </Style>
-        
+
+        <Style x:Key="ToolToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+            <Style.Triggers>
+                <!-- Tool active (e.g., highlighter selected): amber -->
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="Active">
+                    <Setter Property="Background" Value="#DCE6A700"/>
+                </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="Active"/>
+                        <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsMouseOver}" Value="True"/>
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="#EEE6A700"/>
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="FadeToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+            <Style.Triggers>
+                <!-- Fade active: teal -->
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="Active">
+                    <Setter Property="Background" Value="#DC14B8A6"/>
+                </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="Active"/>
+                        <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsMouseOver}" Value="True"/>
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="#EE14B8A6"/>
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="IconPathStyle" TargetType="Path">
             <Setter Property="Fill" Value="White"/>
             <Setter Property="Stretch" Value="Uniform"/>
@@ -64,46 +95,165 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <Style x:Key="SwatchButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Margin" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="11">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#33FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ThicknessDotStyle" TargetType="Ellipse">
+            <Setter Property="Fill" Value="White"/>
+            <Setter Property="Stroke" Value="Transparent"/>
+            <Setter Property="StrokeThickness" Value="0"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Tag}" Value="Active">
+                    <Setter Property="Stroke" Value="#FFE61A"/>
+                    <Setter Property="StrokeThickness" Value="2"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SwatchEllipseStyle" TargetType="Ellipse">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Stroke" Value="#66FFFFFF"/>
+            <Setter Property="StrokeThickness" Value="1"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Tag}" Value="Active">
+                    <Setter Property="Stroke" Value="White"/>
+                    <Setter Property="StrokeThickness" Value="2.5"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     <Border Background="#AA000000" CornerRadius="10" Padding="8" Opacity="0.85">
         <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
-            <!-- Draw Mode Toggle Button - Pen Icon (Material Design edit icon) -->
-            <Button x:Name="ToggleButton" Width="36" Height="36" Margin="0,0,0,8" 
+            <!-- Draw Mode Toggle Button - Pen Icon -->
+            <Button x:Name="ToggleButton" Width="36" Height="36" Margin="0,0,0,8"
                     Style="{StaticResource ToggleButtonStyle}"
                     Tag="PassThrough"
                     Click="OnToggleClick" ToolTip="Toggle Draw (Win+Shift+D)&#x0a;Alt+Double-click for temporary mode">
                 <Viewbox Width="20" Height="20">
-                    <Path x:Name="TogglePath" 
-                          Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" 
+                    <Path x:Name="TogglePath"
+                          Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
                           Style="{StaticResource IconPathStyle}"/>
                 </Viewbox>
             </Button>
 
-            <!-- Color Cycle Button - Color Swatch Icon -->
-            <Button Width="36" Height="36" Margin="0,0,0,8"
-                    Style="{StaticResource IconButtonStyle}"
-                    Click="OnColorCycleClick" ToolTip="Cycle Color (Alt+S in temp mode)">
-                <Viewbox Width="16" Height="16">
-                    <Ellipse x:Name="ColorCycleSwatch" Width="16" Height="16" Stroke="White" StrokeThickness="1"/>
-                </Viewbox>
-            </Button>
-            
-            <!-- Clear Button - Eraser Icon -->
-            <Button Width="36" Height="36" Margin="0,0,0,8" 
-                    Style="{StaticResource IconButtonStyle}"
-                    Click="OnClearClick" ToolTip="Clear (Win+Shift+C)">
+            <!-- Highlighter Toggle Button -->
+            <Button x:Name="HighlighterButton" Width="36" Height="36" Margin="0,0,0,8"
+                    Style="{StaticResource ToolToggleButtonStyle}"
+                    Tag="Inactive"
+                    Click="OnHighlighterClick" ToolTip="Toggle Highlighter">
                 <Viewbox Width="20" Height="20">
-                    <Path Data="M16.24 3.56l4.95 4.94c.78.79.78 2.05 0 2.84L12 20.53a4.008 4.008 0 0 1-5.66 0L2.81 17c-.78-.79-.78-2.05 0-2.84l10.6-10.6c.79-.78 2.05-.78 2.83 0zM4.22 15.58l3.54 3.53c.78.79 2.04.79 2.83 0l3.53-3.53-4.95-4.95-4.95 4.95z" 
+                    <Path Data="M17.75 7L14 3.25l-10 10V17h3.75l10-10zm2.96-2.96c.39-.39.39-1.02 0-1.41L18.37.29a.9959.9959 0 0 0-1.41 0L15 2.25 18.75 6l1.96-1.96zM0 20h24v4H0v-4z"
                           Style="{StaticResource IconPathStyle}"/>
                 </Viewbox>
             </Button>
-            
-            <!-- Quit Button - Close Icon (Material Design close icon) -->
-            <Button Width="36" Height="36" 
+
+            <!-- Rectangle Toggle Button -->
+            <Button x:Name="RectangleButton" Width="36" Height="36" Margin="0,0,0,8"
+                    Style="{StaticResource ToolToggleButtonStyle}"
+                    Tag="Inactive"
+                    Click="OnRectangleClick" ToolTip="Toggle Rectangle (Shift = square)">
+                <Viewbox Width="20" Height="20">
+                    <Path Data="M19 19H5V5h14v14zM19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"
+                          Style="{StaticResource IconPathStyle}"/>
+                </Viewbox>
+            </Button>
+
+            <!-- Auto-Fade Toggle Button - Timer/history icon -->
+            <Button x:Name="FadeButton" Width="36" Height="36" Margin="0,0,0,8"
+                    Style="{StaticResource FadeToggleButtonStyle}"
+                    Tag="Inactive"
+                    Click="OnFadeClick" ToolTip="Auto-Fade Strokes">
+                <Viewbox Width="20" Height="20">
+                    <Path Data="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 2.05 4.95l-1.42 1.43A9 9 0 1 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"
+                          Style="{StaticResource IconPathStyle}"/>
+                </Viewbox>
+            </Button>
+
+            <!-- Thickness Row: Thin / Medium / Thick -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
+                <Button x:Name="ThinButton" Style="{StaticResource SwatchButtonStyle}"
+                        Tag="Inactive" Click="OnThicknessClick" ToolTip="Thin">
+                    <Ellipse Style="{StaticResource ThicknessDotStyle}" Width="5" Height="5"/>
+                </Button>
+                <Button x:Name="MediumButton" Style="{StaticResource SwatchButtonStyle}"
+                        Tag="Active" Click="OnThicknessClick" ToolTip="Medium">
+                    <Ellipse Style="{StaticResource ThicknessDotStyle}" Width="10" Height="10"/>
+                </Button>
+                <Button x:Name="ThickButton" Style="{StaticResource SwatchButtonStyle}"
+                        Tag="Inactive" Click="OnThicknessClick" ToolTip="Thick">
+                    <Ellipse Style="{StaticResource ThicknessDotStyle}" Width="16" Height="16"/>
+                </Button>
+            </StackPanel>
+
+            <!-- Color Swatch Grid (3 per row) -->
+            <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Margin="0,0,0,8">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button x:Name="RedSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Red">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#FF2020"/>
+                    </Button>
+                    <Button x:Name="BlueSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Blue">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#1E6FFF"/>
+                    </Button>
+                    <Button x:Name="GreenSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Green">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#22DD55"/>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button x:Name="YellowSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Yellow">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#FFE61A"/>
+                    </Button>
+                    <Button x:Name="WhiteSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="White">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#FFFFFF"/>
+                    </Button>
+                    <Button x:Name="MagentaSwatch" Style="{StaticResource SwatchButtonStyle}"
+                            Tag="Inactive" Click="OnColorSwatchClick" ToolTip="Magenta">
+                        <Ellipse Style="{StaticResource SwatchEllipseStyle}" Fill="#FF2EB5"/>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Clear Button - Trashcan Icon -->
+            <Button Width="36" Height="36" Margin="0,0,0,8"
+                    Style="{StaticResource IconButtonStyle}"
+                    Click="OnClearClick" ToolTip="Clear (Win+Shift+C)">
+                <Viewbox Width="20" Height="20">
+                    <Path Data="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                          Style="{StaticResource IconPathStyle}"/>
+                </Viewbox>
+            </Button>
+
+            <!-- Quit Button -->
+            <Button Width="36" Height="36"
                     Style="{StaticResource IconButtonStyle}"
                     Click="OnQuitClick" ToolTip="Quit (Win+Shift+Q)">
                 <Viewbox Width="20" Height="20">
-                    <Path Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" 
+                    <Path Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
                           Style="{StaticResource IconPathStyle}"/>
                 </Viewbox>
             </Button>

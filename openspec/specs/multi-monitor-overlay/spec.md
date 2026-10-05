@@ -1,7 +1,7 @@
 # multi-monitor-overlay Specification
 
 ## Purpose
-TBD - created by archiving change add-control-palette-and-multi-monitor-overlay. Update Purpose after archive.
+Defines how overlays cover every connected monitor, how drawing is confined to the palette's monitor, and how the layout survives scale-factor differences and monitor changes.
 ## Requirements
 ### Requirement: Overlay covers each connected monitor
 When multiple monitors are connected in an extended desktop configuration, the system SHALL present an overlay surface that covers the bounds of each connected monitor.
@@ -74,7 +74,7 @@ The system SHALL clear strokes across all monitors when clear-all is invoked.
 - **THEN** strokes are removed from all monitors.
 
 ### Requirement: Temporary draw mode works only on palette's monitor
-When temporary draw mode is activated (e.g., via Shift key hold), the system SHALL enable drawing only on the monitor where the control palette is located.
+When temporary draw mode is activated (Alt double-tap and hold), the system SHALL enable drawing only on the monitor where the control palette is located.
 
 #### Scenario: Temporary mode on palette monitor only
 - **GIVEN** the palette is on monitor A and the system is in pass-through mode

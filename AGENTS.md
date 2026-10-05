@@ -17,12 +17,4 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
-<!-- SOFTWARE DEVELOPMENT POLICIES:START -->
-# Software Development Policies
-
-- `docs/policies/development-policy.md`: Coding standards, branch strategy, commit message conventions, and more
-- `docs/policies/testing-policy.md`: Testing strategy, coverage targets
-- `docs/policies/review-policy.md`: Code review criteria, checklists
-- `docs/policies/deployment-policy.md`: Deployment procedures, CI/CD pipeline
-
-<!-- SOFTWARE DEVELOPMENT POLICIES:END -->
+Project conventions, architecture and the release procedure: see `CLAUDE.md` and `docs/RELEASE.md`.

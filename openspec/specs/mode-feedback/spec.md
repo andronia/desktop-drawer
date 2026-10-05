@@ -1,60 +1,37 @@
 # mode-feedback Specification
 
 ## Purpose
-TBD - created by archiving change add-drawing-overlay-mvp. Update Purpose after archive.
+Defines the on-screen indicator that tells the user drawing is enabled, and how it distinguishes temporary from permanent draw mode.
+
 ## Requirements
-### Requirement: Provide minimal feedback when draw mode is active
-When draw mode is active, the system SHALL display a minimal visual indicator so the user can tell drawing is enabled.
+### Requirement: Indicator while draw mode is active
+While an overlay is in draw mode, the system SHALL show a small "DRAW" label in the top-left corner of that monitor.
 
 #### Scenario: Draw mode indicator is visible
-- **GIVEN** the overlay is in draw mode
-- **WHEN** the mode changes into draw mode
-- **THEN** a visual indicator (e.g., a small "DRAW" label) is visible.
+- **GIVEN** the overlay is in pass-through mode
+- **WHEN** draw mode is turned on
+- **THEN** a "DRAW" label appears on the palette's monitor.
 
-### Requirement: Mode indicator color matches pen color
-The system SHALL display the mode indicator text in the same color as the currently selected pen color.
+### Requirement: Indicator colour matches the pen colour
+The indicator text SHALL use the current pen colour and SHALL update immediately when the colour changes.
 
-#### Scenario: Indicator color matches red pen
-- **GIVEN** the pen color is set to Red
-- **AND** the overlay is in draw mode
-- **WHEN** the mode indicator is displayed
-- **THEN** the indicator text color is red (#FF0000)
-
-#### Scenario: Indicator color matches blue pen
-- **GIVEN** the pen color is set to Blue
-- **AND** the overlay is in draw mode
-- **WHEN** the mode indicator is displayed
-- **THEN** the indicator text color is blue (#0000FF)
-
-#### Scenario: Indicator color matches green pen
-- **GIVEN** the pen color is set to Green
-- **AND** the overlay is in draw mode
-- **WHEN** the mode indicator is displayed
-- **THEN** the indicator text color is green (#00FF00)
-
-#### Scenario: Indicator color updates when pen color changes
-- **GIVEN** the overlay is in draw mode with pen color Red
-- **WHEN** the user cycles to the next pen color (Blue)
-- **THEN** the indicator text color updates to blue immediately
+#### Scenario: Indicator colour updates when pen colour changes
+- **GIVEN** draw mode is active with a red pen
+- **WHEN** the user selects blue
+- **THEN** the indicator text turns the same blue as the pen.
 
 ### Requirement: Pass-through mode remains unobtrusive
-When pass-through mode is active, the system SHALL hide or minimize the draw mode indicator so it does not distract the user.
+In pass-through mode, the system SHALL NOT show the draw-mode indicator.
 
 #### Scenario: Pass-through mode indicator is hidden
-- **GIVEN** the overlay is in pass-through mode
-- **WHEN** the mode changes into pass-through mode
-- **THEN** the draw mode indicator is not shown or is visually minimized.
+- **GIVEN** draw mode is active
+- **WHEN** the user switches to pass-through mode
+- **THEN** the indicator disappears.
 
-### Requirement: Distinguish temporary draw mode from permanent draw mode
-The system SHALL provide visual feedback to distinguish temporary draw mode (Shift hold) from permanent draw mode (toggled via `Win+Shift+D`).
+### Requirement: Temporary mode is distinguishable
+While temporary draw mode (Alt double-tap and hold) is active, the indicator SHALL read "DRAW (TEMP)"; in permanent draw mode it SHALL read "DRAW".
 
-#### Scenario: Temporary draw mode indicator is visually distinct
-- **GIVEN** the overlay enters temporary draw mode
-- **WHEN** the mode indicator is displayed
-- **THEN** the indicator shows that temporary mode is active (e.g., "DRAW (Temp)" or different color).
-
-#### Scenario: Permanent draw mode indicator remains consistent
-- **GIVEN** the overlay is in permanent draw mode
-- **WHEN** temporary mode is not active
-- **THEN** the indicator shows standard draw mode (e.g., "DRAW").
-
+#### Scenario: Temporary draw mode indicator
+- **GIVEN** the application is in pass-through mode
+- **WHEN** the user double-taps and holds Alt
+- **THEN** the indicator reads "DRAW (TEMP)" until Alt is released.

@@ -1,10 +1,10 @@
 # actions-consistency Specification
 
 ## Purpose
-TBD - created by archiving change add-control-palette-and-multi-monitor-overlay. Update Purpose after archive.
+Ensures each action behaves identically whichever entry point triggers it: palette, global hotkey or tray menu.
 ## Requirements
 ### Requirement: Palette actions match hotkey actions
-The system SHALL ensure that palette operations (toggle draw mode, clear all, quit) perform the same actions as their corresponding global hotkeys.
+The system SHALL ensure that palette operations (toggle draw mode, clear all, quit) perform the same actions as their corresponding global hotkeys and tray menu items.
 
 #### Scenario: Toggle via hotkey and palette is equivalent
 - **GIVEN** the application is running

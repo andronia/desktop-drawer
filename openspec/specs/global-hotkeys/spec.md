@@ -1,7 +1,8 @@
 # global-hotkeys Specification
 
 ## Purpose
-TBD - created by archiving change add-drawing-overlay-mvp. Update Purpose after archive.
+Defines the system-wide keyboard shortcuts (toggle draw, clear, quit), their fallbacks and overrides, and the Alt-based temporary draw mode gestures.
+
 ## Requirements
 ### Requirement: Register global hotkeys
 The system SHALL register one global hotkey per action so it works even when the application is not focused. Unless overridden in `settings.json` (`hotkeys.toggleDraw`, `hotkeys.clearAll`, `hotkeys.quit`), each action SHALL use the first available gesture from its default list:
@@ -11,7 +12,7 @@ The system SHALL register one global hotkey per action so it works even when the
 
 #### Scenario: Hotkeys work while the app is unfocused
 - **GIVEN** the application is running in the background
-- **WHEN** the user presses a configured hotkey
+- **WHEN** the user presses a bound hotkey
 - **THEN** the corresponding action is executed.
 
 #### Scenario: Default gesture already taken by another application
@@ -21,6 +22,11 @@ The system SHALL register one global hotkey per action so it works even when the
 - **AND** the palette's Clear tooltip shows the bound gesture
 - **AND** no error dialog is shown.
 
+#### Scenario: Configured override
+- **GIVEN** `settings.json` sets `hotkeys.clearAll` to `Ctrl+Alt+E`
+- **WHEN** the application starts and the gesture is free
+- **THEN** clear-all is bound to `Ctrl+Alt+E` and the defaults for clear-all are not tried.
+
 #### Scenario: No gesture available for an action
 - **GIVEN** every candidate gesture for an action is taken or invalid
 - **WHEN** the application starts
@@ -28,73 +34,50 @@ The system SHALL register one global hotkey per action so it works even when the
 - **AND** a single non-modal tray notification names the action without a shortcut.
 
 ### Requirement: Mode toggle updates input behavior
-When the user toggles modes via `Win+Shift+D`, the system SHALL switch between draw mode and pass-through mode, and the input behavior SHALL change accordingly.
+The toggle-draw hotkey SHALL switch between draw mode and pass-through mode exactly as the palette's draw-mode button does.
 
 #### Scenario: Toggle from pass-through to draw mode
 - **GIVEN** the overlay is in pass-through mode
-- **WHEN** the user presses `Win+Shift+D`
-- **THEN** the overlay enters draw mode and starts receiving pointer input.
+- **WHEN** the user presses the toggle-draw hotkey
+- **THEN** the overlay on the palette's monitor enters draw mode and receives pointer input.
 
-### Requirement: Temporary draw mode via Shift double-click and hold
-The system SHALL activate a temporary draw mode when the user double-clicks the Alt key and holds it down, and SHALL deactivate temporary draw mode when the Alt key is released.
+### Requirement: Temporary draw mode via Alt double-tap and hold
+The system SHALL activate temporary draw mode when the user presses Alt twice within the system double-click time and keeps it held after the second press, and SHALL deactivate it when Alt is released.
 
-**Changed from:** Shift double-click and hold → Alt double-click and hold
-
-#### Scenario: Activate temporary draw mode with Alt double-click and hold
+#### Scenario: Activate temporary draw mode
 - **GIVEN** the application is running in any mode
-- **WHEN** the user double-clicks the Alt key (two rapid presses within system double-click threshold) and holds it down
-- **THEN** temporary draw mode is activated and the overlay starts receiving pointer input.
-
-**Changed from:** User double-clicks the Shift key → User double-clicks the Alt key
+- **WHEN** the user double-taps Alt and holds it down
+- **THEN** temporary draw mode is activated and the overlay on the palette's monitor receives pointer input.
 
 #### Scenario: Deactivate temporary draw mode on Alt release
-- **GIVEN** temporary draw mode is active (Alt is being held)
-- **WHEN** the user releases the Alt key
-- **THEN** temporary draw mode is deactivated and the overlay returns to pass-through mode.
-
-**Changed from:** Shift is being held / releases the Shift key → Alt is being held / releases the Alt key
+- **GIVEN** temporary draw mode is active
+- **WHEN** the user releases Alt
+- **THEN** temporary draw mode ends and the overlays return to the permanent mode's state.
 
 ### Requirement: Temporary mode independence from permanent toggle
-The temporary draw mode SHALL work independently from the permanent draw mode toggle (`Win+Shift+D`), and temporary mode SHALL take precedence when both are active.
+Temporary draw mode SHALL work independently of the permanent draw-mode toggle and SHALL take precedence while active.
 
-#### Scenario: Temporary mode activates while permanent draw mode is off
-- **GIVEN** the overlay is in pass-through mode (permanent draw mode is off)
-- **WHEN** the user activates temporary draw mode via Shift double-click and hold
-- **THEN** temporary draw mode is active regardless of permanent mode state.
-
-#### Scenario: Temporary mode takes precedence over permanent mode
-- **GIVEN** permanent draw mode is already active
+#### Scenario: Temporary mode while permanent draw mode is off
+- **GIVEN** the overlay is in pass-through mode
 - **WHEN** the user activates temporary draw mode
-- **THEN** temporary draw mode takes precedence and controls the overlay behavior.
+- **THEN** drawing is enabled until Alt is released.
 
-### Requirement: Alt+S cycles pen color during temporary draw mode
-The system SHALL detect Alt+S key combination when temporary draw mode is active (Alt key held after double-tap activation). Pressing S while holding Alt SHALL cycle the pen color through red → blue → green → red sequence.
+#### Scenario: Temporary mode while permanent draw mode is on
+- **GIVEN** permanent draw mode is active
+- **WHEN** the user activates and then ends temporary draw mode
+- **THEN** permanent draw mode is still active afterwards.
 
-#### Scenario: Alt+S cycles color in temporary draw mode
-- **GIVEN** temporary draw mode is active (Alt held after double-tap)
-- **WHEN** the user presses S while continuing to hold Alt
-- **THEN** the pen color cycles to the next color in sequence
-- **AND** the control palette button updates to reflect the new color.
+### Requirement: Alt+S cycles pen colour during temporary draw mode
+While temporary draw mode is active, pressing S (with Alt still held) SHALL advance the pen colour one step through the nine-colour cycle. The key press SHALL be consumed so the focused application does not also receive Alt+S. Outside temporary draw mode, Alt+S SHALL pass through untouched.
 
-#### Scenario: Alt+S does not interfere with drawing
-- **GIVEN** temporary draw mode is active and the user is drawing
-- **WHEN** the user presses S while holding Alt
-- **THEN** the color changes without disrupting the current stroke or drawing operation.
-
-#### Scenario: Alt+S has no effect outside temporary draw mode
-- **GIVEN** the application is in pass-through mode
-- **WHEN** the user presses Alt+S
-- **THEN** no color change occurs
-- **AND** no error or side effect is observed.
-
-#### Scenario: Alt+S has no effect in permanent draw mode
-- **GIVEN** the application is in permanent draw mode (toggled via Win+Shift+D, not temporary)
-- **WHEN** the user presses Alt+S
-- **THEN** no color change occurs.
-
-#### Scenario: S key alone has no effect
+#### Scenario: Alt+S cycles colour in temporary draw mode
 - **GIVEN** temporary draw mode is active
-- **WHEN** the user presses S without holding Alt
-- **THEN** no color change occurs
-- **AND** normal keyboard behavior is preserved.
+- **WHEN** the user presses S while holding Alt
+- **THEN** the pen colour advances to the next colour
+- **AND** the palette's swatch selection updates
+- **AND** the focused application does not receive the key press.
 
+#### Scenario: Alt+S outside temporary draw mode
+- **GIVEN** the application is in pass-through mode or permanent draw mode
+- **WHEN** the user presses Alt+S
+- **THEN** no colour change occurs and the focused application receives Alt+S normally.

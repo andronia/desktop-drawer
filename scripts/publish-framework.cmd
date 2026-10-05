@@ -33,7 +33,7 @@ if %ERRORLEVEL% EQU 0 (
     echo Output: %OUTPUT_DIR%\DesktopInk.exe
     echo.
     echo This executable requires .NET 10 Desktop Runtime to be installed.
-    echo Typical size: 1-2 MB
+    echo Typical size: under 1 MB
     echo.
     echo Users can download .NET 10 Runtime from:
     echo https://dotnet.microsoft.com/download/dotnet/10.0

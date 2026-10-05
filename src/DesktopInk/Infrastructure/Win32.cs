@@ -26,9 +26,6 @@ public static class Win32
     internal const int WmKeyup = 0x0101;
     internal const int WmSyskeydown = 0x0104;
     internal const int WmSyskeyup = 0x0105;
-    internal const int VkShift = 0x10;
-    internal const int VkLShift = 0xA0;
-    internal const int VkRShift = 0xA1;
     internal const int VkLMenu = 0xA4;
     internal const int VkRMenu = 0xA5;
     internal const int VkS = 0x53;

@@ -30,7 +30,7 @@ src/DesktopInk.Tests/   mirrors the Core/ and Infrastructure/ folders
 installer/       Inno Setup script
 scripts/         build/test/run/publish/installer .cmd wrappers
 openspec/specs/  living behaviour specs, one folder per capability
-docs/            RELEASE.md and policies
+docs/            RELEASE.md (release procedure)
 notes/           gitignored: open questions, decisions in progress, anything naming people
 ```
 
@@ -70,14 +70,13 @@ Each action tries a list of gestures and uses the first one Windows accepts (`Ho
 
 ## Release
 
-1. The version lives only in `<Version>`/`<FileVersion>` in `src/DesktopInk/DesktopInk.csproj`. `make-installer.cmd` passes it to Inno Setup.
-2. Tests green in both configurations. Build and smoke-test the installer locally (`DesktopInkSetup-<v>.exe /VERYSILENT /CURRENTUSER` upgrades in place).
-3. Commit to `main`, push, then push tag `v<version>`. `.github/workflows/release.yml` creates the GitHub Release with the two portable `.exe` files.
-4. Attach the installer and set a human title and notes: `gh release upload v<v> publish/installer/DesktopInkSetup-<v>.exe` and `gh release edit v<v> --title ... --notes-file ...`. Every release carries the installer, because the README points users at it.
+Follow `docs/RELEASE.md` (the single source for the procedure). Essentials: the version lives only in the csproj; build and smoke-test the installer before pushing the tag; every GitHub Release carries the installer, because the README points users to it.
 
 ## Conventions
 
 - Specs: bug fixes update `openspec/specs/*` directly; new capabilities go through an OpenSpec change proposal (see `openspec/AGENTS.md`).
+- Docs describe the present. No placeholder or stub files, no "changed from" notes: git history is the archive. `openspec/changes/archive/` is the append-only record and is never edited.
+- One canonical doc per topic: the release procedure lives only in `docs/RELEASE.md`; architecture and conventions live here.
 - Commits: conventional prefixes (`feat:`, `fix:`, `chore:`), with a summary body for releases.
 - No personal or company names in tracked files beyond deliberate product content (installer publisher, LICENSE, release URLs). Process notes go in `notes/`.
 - Product UI text stays minimal: no explanatory or state-narrating labels the user didn't ask for.

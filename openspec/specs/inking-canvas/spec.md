@@ -1,125 +1,111 @@
 # inking-canvas Specification
 
 ## Purpose
-TBD - created by archiving change add-drawing-overlay-mvp. Update Purpose after archive.
+Defines what the user can draw on an overlay in draw mode: the tools, colours, thickness, straight-line constraint, auto-fade, the cursor spotlight, and how strokes are cleared.
+
 ## Requirements
-### Requirement: Freehand drawing with a single drag gesture
-In draw mode, the system SHALL create a visible stroke when the user presses, drags, and releases the left mouse button.
+### Requirement: Freehand pen drawing
+In draw mode, the system SHALL create a freehand stroke along the path of a left-button drag, using round caps and joins. The pen SHALL be the default tool.
 
 #### Scenario: Draw a single continuous stroke
-- **GIVEN** the overlay is in draw mode
+- **GIVEN** the overlay is in draw mode and the pen tool is active
 - **WHEN** the user performs a left-button drag gesture
 - **THEN** a continuous stroke is rendered along the drag path.
 
-### Requirement: Fixed stroke appearance (MVP)
-The system SHALL render strokes using configurable color (selected by user), fixed width (3px), and rounded caps and joins. The default color SHALL be red (#FF0000).
+### Requirement: Highlighter, rectangle and arrow tools
+The system SHALL provide three additional tools, at most one active at a time; deselecting the active tool SHALL return to the pen.
+- **Highlighter**: freehand stroke at 35% opacity with flat caps, width `6 + 3 × thickness`.
+- **Rectangle**: an unfilled outline from the press point to the current pointer; holding Shift SHALL constrain it to a square.
+- **Arrow**: a straight line from the press point to the release point with an arrowhead at the release point.
 
-#### Scenario: Stroke appearance matches selected color
-- **GIVEN** the user has selected a pen color (red, blue, or green)
-- **WHEN** the user draws multiple strokes
-- **THEN** each stroke uses the currently selected color with fixed width (3px) and rounded caps/joins.
+#### Scenario: Draw a highlighter stroke
+- **GIVEN** the highlighter tool is active in draw mode
+- **WHEN** the user drags across text
+- **THEN** a wide translucent stroke is rendered and the text beneath stays visible.
 
-#### Scenario: Default color is red
+#### Scenario: Draw a square with Shift
+- **GIVEN** the rectangle tool is active in draw mode
+- **WHEN** the user drags while holding Shift
+- **THEN** the outline is a square sized by the larger of the horizontal and vertical drag distances.
+
+#### Scenario: Draw an arrow
+- **GIVEN** the arrow tool is active in draw mode
+- **WHEN** the user drags from point A and releases at point B
+- **THEN** a straight arrow from A pointing at B is rendered.
+
+#### Scenario: Deselecting a tool returns to the pen
+- **GIVEN** the rectangle tool is active
+- **WHEN** the user clicks the rectangle tool button again
+- **THEN** the pen becomes the active tool.
+
+### Requirement: Straight lines with Shift
+While drawing with the pen or highlighter, holding Shift SHALL replace the stroke with a straight line from the press point to the current pointer position, at any angle.
+
+#### Scenario: Shift produces a straight line
+- **GIVEN** the user is drawing with the pen
+- **WHEN** the user holds Shift and keeps dragging
+- **THEN** the stroke becomes a single straight segment from the press point to the pointer.
+
+#### Scenario: Shift does not interfere with hotkeys
+- **GIVEN** the application is running
+- **WHEN** the user presses a global hotkey that includes Shift
+- **THEN** the hotkey action runs and no straight-line constraint is applied.
+
+### Requirement: Nine pen colours
+The system SHALL offer nine colours: red `#FF2020`, blue `#1E6FFF`, green `#22DD55`, yellow `#FFE61A`, white `#FFFFFF`, magenta `#FF2EB5`, orange `#FF8A1E`, cyan `#22DDE6` and black `#101010`. Red SHALL be the default. A colour change SHALL apply to new strokes on all monitors and SHALL leave existing strokes unchanged.
+
+#### Scenario: Default colour is red
 - **GIVEN** the application has just started
 - **WHEN** the user draws a stroke
-- **THEN** the stroke is rendered in red (#FF0000).
+- **THEN** the stroke is rendered in red.
 
-#### Scenario: Color change applies only to new strokes
+#### Scenario: Colour change applies only to new strokes
 - **GIVEN** the user has drawn strokes in red
-- **WHEN** the user cycles to blue and draws new strokes
+- **WHEN** the user selects blue and draws again
 - **THEN** the old strokes remain red and the new strokes are blue.
 
+#### Scenario: Colour cycle order
+- **GIVEN** the pen colour is red
+- **WHEN** the colour is cycled repeatedly (Alt+S in temporary draw mode)
+- **THEN** it advances red → blue → green → yellow → white → magenta → orange → cyan → black → red.
+
+### Requirement: Adjustable thickness
+The system SHALL provide a thickness from 1 to 10 (default 4) that applies to all tools for new strokes.
+
+#### Scenario: Thicker strokes
+- **GIVEN** the thickness is set to 8
+- **WHEN** the user draws with the pen
+- **THEN** the stroke is twice as wide as at thickness 4.
+
+### Requirement: Auto-fade
+When auto-fade is enabled, each completed stroke or shape SHALL remain fully visible for about 0.7 s, fade out over about 2.3 s, and then be removed. Strokes completed while auto-fade is off SHALL NOT fade.
+
+#### Scenario: Stroke fades after release
+- **GIVEN** auto-fade is enabled
+- **WHEN** the user releases the mouse after drawing a stroke
+- **THEN** the stroke fades out and is removed about three seconds later.
+
+### Requirement: Cursor spotlight
+When the spotlight is enabled, the system SHALL draw a translucent yellow circle (72 device-independent pixels across) centred on the pointer, on whichever monitor the pointer is on, in both draw and pass-through modes. The spotlight SHALL NOT intercept input.
+
+#### Scenario: Spotlight follows the pointer across monitors
+- **GIVEN** the spotlight is enabled
+- **WHEN** the user moves the pointer from one monitor to another
+- **THEN** the circle stays centred on the pointer on the new monitor.
+
 ### Requirement: Clear-all removes all strokes
-The system SHALL provide a clear-all action that removes all strokes from the overlay. Clear-all can be invoked manually via hotkey (`Win+Shift+C`) or automatically when temporary draw mode is deactivated.
+The system SHALL provide a clear-all action, invoked from the palette, the tray menu or the clear hotkey, that removes all strokes from every monitor.
 
 #### Scenario: Clear all drawings manually
-- **GIVEN** there are one or more strokes on the overlay
-- **WHEN** the clear-all action is invoked via `Win+Shift+C`
-- **THEN** the overlay contains no visible strokes.
+- **GIVEN** there are strokes on one or more monitors
+- **WHEN** the clear-all action is invoked
+- **THEN** no strokes remain on any monitor.
 
-#### Scenario: Clear all drawings automatically on temporary mode exit
-- **GIVEN** temporary draw mode is active with strokes on the overlay
-- **WHEN** the user releases the Shift key
-- **THEN** the overlay contains no visible strokes.
+### Requirement: Auto-clear on temporary mode exit
+When temporary draw mode ends (Alt released), the system SHALL clear the strokes on the palette's monitor, the only monitor temporary mode draws on. Strokes on other monitors SHALL be kept.
 
-### Requirement: Auto-clear strokes on temporary mode exit
-When temporary draw mode is deactivated (Shift key released), the system SHALL automatically clear all strokes from the canvas across all monitors.
-
-#### Scenario: Strokes are cleared when Shift is released
-- **GIVEN** temporary draw mode is active and the user has drawn one or more strokes
-- **WHEN** the user releases the Shift key
-- **THEN** all strokes are immediately cleared from all overlay windows.
-
-#### Scenario: Auto-clear works on multi-monitor setup
-- **GIVEN** temporary draw mode is active with strokes on multiple monitors
-- **WHEN** the user releases the Shift key
-- **THEN** all strokes across all monitors are cleared simultaneously.
-
-### Requirement: Constrained straight line drawing with Shift modifier
-When drawing in draw mode (permanent or temporary), the system SHALL constrain strokes to straight horizontal or vertical lines when the user holds the Shift key during a drag gesture.
-
-#### Scenario: Draw horizontal straight line with Shift held
-- **GIVEN** the overlay is in draw mode
-- **WHEN** the user holds Shift and performs a drag gesture where the horizontal distance is greater than or equal to the vertical distance
-- **THEN** a horizontal straight line is rendered from the drag start point to the current mouse position (Y coordinate constrained to start point Y).
-
-#### Scenario: Draw vertical straight line with Shift held
-- **GIVEN** the overlay is in draw mode
-- **WHEN** the user holds Shift and performs a drag gesture where the vertical distance is greater than the horizontal distance
-- **THEN** a vertical straight line is rendered from the drag start point to the current mouse position (X coordinate constrained to start point X).
-
-#### Scenario: Transition from freehand to constrained mid-stroke
-- **GIVEN** the user is drawing a freehand stroke (left button held, Shift not pressed)
-- **WHEN** the user presses Shift while continuing to drag
-- **THEN** the stroke transitions to a straight line from the original start point to the current constrained position, and intermediate freehand points are removed.
-
-#### Scenario: Transition from constrained to freehand mid-stroke
-- **GIVEN** the user is drawing a constrained straight line (left button held, Shift pressed)
-- **WHEN** the user releases Shift while continuing to drag
-- **THEN** the stroke continues as freehand from the last constrained position, and subsequent mouse movements add points normally.
-
-#### Scenario: Straight line constraint works in temporary draw mode
-- **GIVEN** temporary draw mode is active (Alt held)
-- **WHEN** the user holds Shift and performs a drag gesture
-- **THEN** straight line constraint applies as in permanent draw mode.
-
-#### Scenario: Shift modifier does not interfere with hotkeys
-- **GIVEN** the application is running
-- **WHEN** the user presses Win+Shift+D, Win+Shift+C, or Win+Shift+Q
-- **THEN** the corresponding hotkey action is executed (toggle draw mode, clear all, quit) without triggering straight line constraint.
-
-### Requirement: User-selectable pen color with cycling
-The system SHALL provide three pen colors: red (#FF0000), blue (#0000FF), and green (#00FF00). The user MAY cycle through colors in sequence: red → blue → green → red. The selected color applies to all new strokes until changed.
-
-#### Scenario: Cycle pen color via control palette button
-- **GIVEN** the current pen color is red
-- **WHEN** the user clicks the color cycle button in the control palette
-- **THEN** the pen color changes to blue
-- **AND** subsequent strokes are rendered in blue.
-
-#### Scenario: Cycle through all colors
-- **GIVEN** the pen color starts at red
-- **WHEN** the user cycles three times
-- **THEN** the pen color returns to red after passing through blue and green.
-
-#### Scenario: Cycle pen color via Alt+S during temporary draw mode
-- **GIVEN** temporary draw mode is active (Alt key held after double-tap)
-- **WHEN** the user presses S while holding Alt
-- **THEN** the pen color cycles to the next color in sequence
-- **AND** subsequent strokes are rendered in the new color.
-
-#### Scenario: Alt+S has no effect outside temporary draw mode
-- **GIVEN** the application is in pass-through mode or permanent draw mode (not temporary)
-- **WHEN** the user presses Alt+S
-- **THEN** no color change occurs.
-
-#### Scenario: Color persists across mode switches
-- **GIVEN** the user has selected blue as the pen color
-- **WHEN** the user toggles between draw and pass-through modes
-- **THEN** the pen color remains blue when returning to draw mode.
-
-#### Scenario: Color applies to all monitors
-- **GIVEN** the user has selected green as the pen color
-- **WHEN** the user draws on multiple monitors
-- **THEN** all strokes on all monitors use green.
-
+#### Scenario: Temporary strokes disappear on release
+- **GIVEN** temporary draw mode is active and the user has drawn strokes
+- **WHEN** the user releases Alt
+- **THEN** the strokes on the palette's monitor are cleared
+- **AND** strokes on other monitors remain.

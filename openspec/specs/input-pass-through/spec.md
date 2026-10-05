@@ -1,7 +1,7 @@
 # input-pass-through Specification
 
 ## Purpose
-TBD - created by archiving change add-drawing-overlay-mvp. Update Purpose after archive.
+Defines how overlays let input reach the applications underneath in pass-through mode and capture it in draw mode.
 ## Requirements
 ### Requirement: Pass-through mode does not interfere with underlying apps
 In pass-through mode, the system SHALL allow pointer input (click, drag, scroll) to be handled by underlying applications as if the overlay were not present.

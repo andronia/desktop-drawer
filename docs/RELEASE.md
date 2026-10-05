@@ -1,192 +1,72 @@
 # Release Process
 
-This document describes the version management and release workflow for Desktop Ink.
+Every release is a git tag `vX.Y.Z` plus a GitHub Release carrying three files. The installer is the one the README points users to, so it must be attached to every release.
 
-## Overview
-
-The release process is automated using GitHub Actions. When you push a version tag, the CI/CD pipeline automatically builds, tests, and creates a GitHub Release with distribution files.
+| File | Size | Built by | For |
+|---|---|---|---|
+| `DesktopInkSetup-X.Y.Z.exe` | ~51 MB | `scripts\make-installer.cmd` (locally) | End users: per-user install, no admin, no .NET needed |
+| `DesktopInk-vX.Y.Z-win-x64.exe` | ~182 MB | release workflow | Portable single file, .NET runtime bundled |
+| `DesktopInk-vX.Y.Z-win-x64-framework.exe` | < 1 MB | release workflow | Portable; needs the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) |
 
 ## Prerequisites
 
-- Git configured with write access to the repository
-- PowerShell (for version bump script)
-- All tests passing locally
+- .NET 10 SDK (`dotnet --version` → 10.0.x)
+- Inno Setup 6: `winget install JRSoftware.InnoSetup -e`
+- GitHub CLI signed in with push access: `gh auth status`
 
-## Version Numbering
+## Versioning
 
-Desktop Ink follows [Semantic Versioning](https://semver.org/):
+[Semantic Versioning](https://semver.org/): MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
-- **Major version** (X.0.0): Breaking changes or major new features
-- **Minor version** (0.X.0): New features, backward compatible
-- **Patch version** (0.0.X): Bug fixes and minor improvements
+The version lives only in `<Version>` and `<FileVersion>` in `src/DesktopInk/DesktopInk.csproj`. The installer script receives it from `make-installer.cmd`; nothing else needs editing.
 
-## Release Workflow
+## Steps
 
-### Step 1: Prepare Changes
+1. **Tests green** in both configurations, on an up-to-date `main`:
 
-1. Ensure all changes are committed and pushed to the `main` branch
-2. All tests should be passing:
    ```cmd
-   scripts\test.cmd
+   dotnet test desktop-ink.slnx -c Debug
+   dotnet test desktop-ink.slnx -c Release
    ```
 
-### Step 2: Bump Version
+2. **Bump the version.** This updates the csproj, commits `chore: bump version to X.Y.Z` and creates the tag locally. Don't pass `-Push` yet: the installer is tested first.
 
-Use the version bump script to update the version number and create a git tag:
+   ```cmd
+   scripts\bump-version.cmd X.Y.Z
+   ```
 
-```cmd
-# Update version to 1.1.0 (example)
-scripts\bump-version.cmd 1.1.0
-```
+3. **Build and smoke-test the installer.**
 
-This script will:
-- ✅ Update `Version` and `FileVersion` in `DesktopInk.csproj`
-- ✅ Stage and commit the changes
-- ✅ Create a git tag `v1.1.0`
+   ```cmd
+   scripts\make-installer.cmd
+   publish\installer\DesktopInkSetup-X.Y.Z.exe /VERYSILENT /CURRENTUSER
+   ```
 
-**Optional: Auto-push**
+   Quit any running DesktopInk first; the installer upgrades in place and keeps settings. Launch the installed app and check the palette, drawing and hotkeys. On a multi-monitor setup, check every monitor.
 
-To automatically push changes and tag:
+4. **Push the commit and the tag.**
 
-```cmd
-scripts\bump-version.cmd 1.1.0 -Push
-```
+   ```cmd
+   git push
+   git push origin vX.Y.Z
+   ```
 
-### Step 3: Push to Remote
+   The tag starts `.github/workflows/release.yml`, which runs the tests, builds both portable executables and creates the GitHub Release with auto-generated notes. `ci.yml` runs on the `main` push.
 
-If you didn't use the `-Push` flag, manually push the changes:
+5. **Attach the installer and write the notes** once the workflow has finished (`gh run watch`):
 
-```cmd
-git push
-git push origin v1.1.0
-```
+   ```cmd
+   gh release upload vX.Y.Z publish\installer\DesktopInkSetup-X.Y.Z.exe
+   gh release edit vX.Y.Z --title "vX.Y.Z - <summary>" --notes-file <notes.md>
+   ```
 
-### Step 4: Automated Release
+   Notes are user-facing: an **Install** section (download the installer, SmartScreen "More info → Run anyway") followed by what was fixed or added. The Releases page is how users learn about new versions; the app does not check for updates.
 
-Once the tag is pushed, GitHub Actions automatically:
-
-1. **Runs CI Tests** - Validates all unit tests pass
-2. **Builds Two Distributions**:
-   - Self-contained (includes .NET runtime, ~191MB)
-   - Framework-dependent (requires .NET 10 installed, ~173MB)
-3. **Creates GitHub Release** with:
-   - Auto-generated release notes
-   - Both distribution executables attached
-   - Proper naming: `DesktopInk-v1.1.0-win-x64.exe`
-
-Keep release notes concise and user-facing; the Releases page is how users find new versions.
-
-### Step 5: Verify Release
-
-1. Go to the [Releases page](https://github.com/atman-33/desktop-ink/releases)
-2. Verify the new release appears
-3. Check that both distribution files are attached:
-   - `DesktopInk-vX.X.X-win-x64.exe` (self-contained)
-   - `DesktopInk-vX.X.X-win-x64-framework.exe` (framework-dependent)
-4. Test download and execution
-
-## Distribution Files
-
-### Self-Contained (`-win-x64.exe`)
-
-- **Size**: ~191MB
-- **Pros**: No .NET installation required, runs anywhere
-- **Cons**: Larger file size
-- **Recommended for**: End users who may not have .NET installed
-
-### Framework-Dependent (`-win-x64-framework.exe`)
-
-- **Size**: ~173MB
-- **Pros**: Smaller file size
-- **Cons**: Requires [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
-- **Recommended for**: Developers or users with .NET already installed
-
-## Manual Build (If Needed)
-
-If you need to build releases locally without GitHub Actions:
-
-```cmd
-# Self-contained
-scripts\publish.cmd
-
-# Framework-dependent
-scripts\publish-framework.cmd
-
-# Both
-scripts\publish-all.cmd
-```
-
-Output files will be in:
-- `publish/win-x64-self-contained/DesktopInk.exe`
-- `publish/win-x64-framework/DesktopInk.exe`
+6. **Verify** with `gh release view vX.Y.Z`: three assets, correct title, marked Latest.
 
 ## Troubleshooting
 
-### Tag Already Exists
-
-If the tag already exists and you need to recreate it:
-
-```powershell
-# Delete local tag
-git tag -d v1.1.0
-
-# Delete remote tag
-git push origin :refs/tags/v1.1.0
-
-# Recreate tag
-git tag -a v1.1.0 -m "Release version 1.1.0"
-git push origin v1.1.0
-```
-
-The bump-version script will also prompt you to delete and recreate if a tag exists.
-
-### GitHub Actions Failed
-
-1. Check the [Actions tab](https://github.com/atman-33/desktop-ink/actions)
-2. Review the failed workflow logs
-3. Fix the issue and re-run the workflow or create a new tag
-
-### Build Failed Locally
-
-Ensure you have the correct .NET SDK:
-
-```cmd
-dotnet --version
-# Should show 10.0.x or higher
-```
-
-## CI/CD Configuration
-
-The release automation is configured in:
-
-- **CI Workflow**: `.github/workflows/ci.yml`
-  - Runs on every push/PR to main, develop, feature branches
-  - Validates builds and tests
-
-- **Release Workflow**: `.github/workflows/release.yml`
-  - Triggers on `v*.*.*` tags
-  - Builds distributions and creates GitHub Release
-
-## Quick Reference
-
-```cmd
-# Full release process (automatic push)
-scripts\bump-version.cmd 1.2.0 -Push
-
-# Manual process
-scripts\bump-version.cmd 1.2.0
-git push
-git push origin v1.2.0
-
-# Local build only
-scripts\publish-all.cmd
-```
-
-## Best Practices
-
-1. ✅ Always run tests before bumping version
-2. ✅ Update CHANGELOG or release notes if needed
-3. ✅ Use semantic versioning consistently
-4. ✅ Verify the GitHub Release after automated creation
-5. ✅ Test downloaded executables before announcing release
-6. ✅ Keep version numbers in sync across the project
+- **Tag already exists**: `bump-version.cmd` offers to recreate it. Manually: `git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, then tag again.
+- **Release workflow failed**: `gh run list`, then `gh run view <id> --log-failed`. Fix, then delete and re-push the tag, or `gh run rerun <id>` for a transient failure.
+- **`ISCC.exe not found`**: install Inno Setup 6 (see Prerequisites). `make-installer.cmd` looks in the per-user and Program Files locations.
+- **Dev build exits immediately while testing**: the installed DesktopInk is running. Only one instance runs at a time.

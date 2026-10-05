@@ -35,7 +35,7 @@ if %ERRORLEVEL% EQU 0 (
     echo Output: %OUTPUT_DIR%\DesktopInk.exe
     echo.
     echo This executable includes .NET runtime and can run on any Windows x64 machine.
-    echo Typical size: 100-120 MB
+    echo Typical size: ~180 MB
 ) else (
     echo.
     echo ✗ Publish failed!

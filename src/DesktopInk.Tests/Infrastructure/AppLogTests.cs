@@ -5,78 +5,42 @@ using Xunit;
 
 namespace DesktopInk.Tests.Infrastructure;
 
-public class AppLogTests
+public sealed class AppLogTests : IDisposable
 {
-    [Fact]
-    public void LogPath_ShouldReturnValidPath()
-    {
-        // Act
-        var logPath = AppLog.LogPath;
+    private readonly string _tempDir;
 
-        // Assert
-        logPath.Should().NotBeNullOrEmpty();
-        logPath.Should().EndWith(Path.Combine(".tmp", "desktopink", "desktopink.log"));
+    public AppLogTests()
+    {
+        _tempDir = Path.Combine(Path.GetTempPath(), "DesktopInkTests", Guid.NewGuid().ToString("N"));
+        AppLog.LogPath = Path.Combine(_tempDir, "desktopink.log");
     }
 
-    [Fact]
-    public void LogPath_ShouldBeInCurrentDirectory()
+    public void Dispose()
     {
-        // Act
-        var logPath = AppLog.LogPath;
-
-        // Assert
-        logPath.Should().StartWith(Environment.CurrentDirectory);
-    }
-
-#if DEBUG
-    [Fact]
-    public void Info_ShouldWriteToLogFile()
-    {
-        // Arrange
-        var testMessage = $"Test message at {DateTime.Now.Ticks}";
-        var logPath = AppLog.LogPath;
-
-        // Ensure directory exists
-        if (File.Exists(logPath))
+        AppLog.LogPath = AppLog.DefaultLogPath;
+        if (Directory.Exists(_tempDir))
         {
-            File.Delete(logPath);
+            Directory.Delete(_tempDir, recursive: true);
         }
+    }
 
-        // Act
-        AppLog.Info(testMessage);
+    [Fact]
+    public void DefaultLogPath_ShouldBeUnderLocalAppData()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-        // Wait a bit for file write
-        Thread.Sleep(100);
-
-        // Assert
-        File.Exists(logPath).Should().BeTrue();
-        var logContent = File.ReadAllText(logPath, Encoding.UTF8);
-        logContent.Should().Contain("INFO");
-        logContent.Should().Contain(testMessage);
+        AppLog.DefaultLogPath.Should().StartWith(localAppData);
+        AppLog.DefaultLogPath.Should().EndWith(Path.Combine("DesktopInk", "desktopink.log"));
     }
 
     [Fact]
     public void Error_ShouldWriteErrorMessageToLogFile()
     {
-        // Arrange
         var testMessage = $"Error message at {DateTime.Now.Ticks}";
-        var logPath = AppLog.LogPath;
 
-        // Ensure directory exists
-        if (File.Exists(logPath))
-        {
-            File.Delete(logPath);
-        }
-
-        // Act
         AppLog.Error(testMessage);
 
-        // Wait a bit for file write
-        Thread.Sleep(100);
-
-        // Assert
-        File.Exists(logPath).Should().BeTrue();
-        var logContent = File.ReadAllText(logPath, Encoding.UTF8);
+        var logContent = File.ReadAllText(AppLog.LogPath, Encoding.UTF8);
         logContent.Should().Contain("ERROR");
         logContent.Should().Contain(testMessage);
     }
@@ -84,30 +48,40 @@ public class AppLogTests
     [Fact]
     public void Error_WithException_ShouldWriteExceptionDetails()
     {
-        // Arrange
         var testMessage = $"Error with exception at {DateTime.Now.Ticks}";
         var exception = new InvalidOperationException("Test exception");
-        var logPath = AppLog.LogPath;
 
-        // Ensure directory exists
-        if (File.Exists(logPath))
-        {
-            File.Delete(logPath);
-        }
-
-        // Act
         AppLog.Error(testMessage, exception);
 
-        // Wait a bit for file write
-        Thread.Sleep(100);
-
-        // Assert
-        File.Exists(logPath).Should().BeTrue();
-        var logContent = File.ReadAllText(logPath, Encoding.UTF8);
-        logContent.Should().Contain("ERROR");
+        var logContent = File.ReadAllText(AppLog.LogPath, Encoding.UTF8);
         logContent.Should().Contain(testMessage);
         logContent.Should().Contain("InvalidOperationException");
         logContent.Should().Contain("Test exception");
+    }
+
+    [Fact]
+    public void Error_ShouldRotateLogWhenOverSizeCap()
+    {
+        Directory.CreateDirectory(_tempDir);
+        File.WriteAllText(AppLog.LogPath, new string('x', 1024 * 1024 + 1));
+
+        AppLog.Error("after rotation");
+
+        new FileInfo(AppLog.LogPath).Length.Should().BeLessThan(1024);
+        File.Exists(Path.Combine(_tempDir, "desktopink.old.log")).Should().BeTrue();
+    }
+
+#if DEBUG
+    [Fact]
+    public void Info_ShouldWriteToLogFile()
+    {
+        var testMessage = $"Test message at {DateTime.Now.Ticks}";
+
+        AppLog.Info(testMessage);
+
+        var logContent = File.ReadAllText(AppLog.LogPath, Encoding.UTF8);
+        logContent.Should().Contain("INFO");
+        logContent.Should().Contain(testMessage);
     }
 #endif
 
@@ -115,25 +89,13 @@ public class AppLogTests
     [Fact]
     public void Info_InReleaseMode_ShouldNotWriteToLogFile()
     {
-        // Arrange
         var testMessage = $"Release test at {DateTime.Now.Ticks}";
-        var logPath = AppLog.LogPath;
-        var logDir = Path.GetDirectoryName(logPath)!;
 
-        // Clean up if exists
-        if (Directory.Exists(logDir))
-        {
-            Directory.Delete(logDir, true);
-        }
-
-        // Act
         AppLog.Info(testMessage);
 
-        // Wait a bit
-        Thread.Sleep(100);
-
-        // Assert - In release mode, logging is disabled
-        Directory.Exists(logDir).Should().BeFalse();
+        // Other test classes may log errors concurrently, so check for this message only.
+        var logContent = File.Exists(AppLog.LogPath) ? File.ReadAllText(AppLog.LogPath, Encoding.UTF8) : string.Empty;
+        logContent.Should().NotContain(testMessage);
     }
 #endif
 }

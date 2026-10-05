@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Threading;
+﻿using System.Threading;
 using System.Windows;
 using DesktopInk.Core;
 using DesktopInk.Infrastructure;
@@ -21,6 +20,7 @@ public partial class App : System.Windows.Application
 	private TrayIconManager? _trayIcon;
 	private AppSettings? _appSettings;
 	private Mutex? _singleInstanceMutex;
+	private bool _ownsSingleInstanceMutex;
 	private EventWaitHandle? _showPaletteSignal;
 	private RegisteredWaitHandle? _showPaletteWait;
 	private readonly object _updateDialogGate = new();
@@ -31,10 +31,12 @@ public partial class App : System.Windows.Application
 		base.OnStartup(e);
 
 		ShutdownMode = ShutdownMode.OnExplicitShutdown;
+		DispatcherUnhandledException += OnDispatcherUnhandledException;
 
 		AppLog.Info($"Startup cwd='{Environment.CurrentDirectory}' args='{string.Join(' ', e.Args)}'");
 
 		_singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
+		_ownsSingleInstanceMutex = isFirstInstance;
 		if (!isFirstInstance)
 		{
 			// Another instance is already running — ask it to show its palette and exit.
@@ -71,6 +73,11 @@ public partial class App : System.Windows.Application
 
 		_trayIcon = new TrayIconManager(_overlayManager, _controlWindow);
 
+		if (_controlWindow.UnboundHotkeys.Count > 0)
+		{
+			_trayIcon.ShowWarning(DescribeUnboundHotkeys(_controlWindow.UnboundHotkeys));
+		}
+
 		_ = Task.Run(async () =>
 		{
 			try
@@ -104,11 +111,37 @@ public partial class App : System.Windows.Application
 		_showPaletteSignal?.Dispose();
 		_showPaletteSignal = null;
 
-		_singleInstanceMutex?.ReleaseMutex();
+		// Only the first instance owns the mutex; releasing an unowned mutex throws.
+		if (_ownsSingleInstanceMutex)
+		{
+			_singleInstanceMutex?.ReleaseMutex();
+			_ownsSingleInstanceMutex = false;
+		}
+
 		_singleInstanceMutex?.Dispose();
 		_singleInstanceMutex = null;
 
 		base.OnExit(e);
+	}
+
+	private static void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+	{
+		// Keep the overlay alive (and the user's annotations on screen) on a non-fatal UI error.
+		AppLog.Error("Unhandled UI exception.", e.Exception);
+		e.Handled = true;
+	}
+
+	private static string DescribeUnboundHotkeys(IReadOnlyList<HotkeyAction> actions)
+	{
+		var names = actions.Select(action => action switch
+		{
+			HotkeyAction.ToggleDraw => "Toggle draw",
+			HotkeyAction.ClearAll => "Clear",
+			HotkeyAction.Quit => "Quit",
+			_ => action.ToString(),
+		});
+
+		return $"Shortcut unavailable, already used by another app: {string.Join(", ", names)}.";
 	}
 
 	private async Task CheckForUpdatesAsync()
@@ -195,17 +228,19 @@ public partial class App : System.Windows.Application
 			return overrideVersion;
 		}
 
-		try
+		// Read the attribute rather than the file: Assembly.Location is empty in single-file publishes.
+		var fileVersion = typeof(App).Assembly
+			.GetCustomAttributes(typeof(System.Reflection.AssemblyFileVersionAttribute), inherit: false)
+			.OfType<System.Reflection.AssemblyFileVersionAttribute>()
+			.FirstOrDefault()?.Version;
+
+		if (string.IsNullOrWhiteSpace(fileVersion))
 		{
-			var assemblyLocation = System.Reflection.Assembly.GetExecutingAssembly().Location;
-			var info = FileVersionInfo.GetVersionInfo(assemblyLocation);
-			return info.FileVersion ?? info.ProductVersion ?? "0.0.0";
-		}
-		catch (Exception ex)
-		{
-			AppLog.Error("Failed to read current version.", ex);
+			AppLog.Error("Failed to read current version.");
 			return "0.0.0";
 		}
+
+		return fileVersion;
 	}
 }
 

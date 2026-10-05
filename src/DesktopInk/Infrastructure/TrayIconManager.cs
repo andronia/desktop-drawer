@@ -55,6 +55,11 @@ public sealed class TrayIconManager : IDisposable
         _controlWindow.Activate();
     }
 
+    public void ShowWarning(string message)
+    {
+        _notifyIcon.ShowBalloonTip(8000, "DesktopInk", message, WinForms.ToolTipIcon.Warning);
+    }
+
     private void TogglePaletteVisibility()
     {
         if (_controlWindow.IsVisible)

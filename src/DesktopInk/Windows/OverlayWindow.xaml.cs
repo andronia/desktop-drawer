@@ -14,7 +14,7 @@ namespace DesktopInk.Windows;
 
 public partial class OverlayWindow : Window, IOverlayWindow
 {
-    private Win32.Rect _boundsPx;
+    private readonly Win32.Rect _boundsPx;
 
     private uint _dpiX;
     private uint _dpiY;
@@ -49,6 +49,7 @@ public partial class OverlayWindow : Window, IOverlayWindow
 
         InitializeComponent();
 
+        // Initial guess only; OnSourceInitialized pins the HWND to the exact pixel bounds.
         ApplyWpfBoundsFromPx(_boundsPx, _dpiX, _dpiY);
 
         AppLog.Info($"OverlayWindow ctor boundsPx=({_boundsPx.Left},{_boundsPx.Top}) {_boundsPx.Width}x{_boundsPx.Height} dpi=({_dpiX},{_dpiY})");
@@ -188,13 +189,16 @@ public partial class OverlayWindow : Window, IOverlayWindow
             _spotlight.Visibility = Visibility.Visible;
         }
 
-        var localXPx = cursorPx.X - _boundsPx.Left;
-        var localYPx = cursorPx.Y - _boundsPx.Top;
-        var wpfX = localXPx * 96.0 / (_dpiX == 0 ? 96u : _dpiX);
-        var wpfY = localYPx * 96.0 / (_dpiY == 0 ? 96u : _dpiY);
+        if (PresentationSource.FromVisual(SpotlightCanvas) is null)
+        {
+            return;
+        }
 
-        System.Windows.Controls.Canvas.SetLeft(_spotlight, wpfX - SpotlightDiameter / 2.0);
-        System.Windows.Controls.Canvas.SetTop(_spotlight, wpfY - SpotlightDiameter / 2.0);
+        // PointFromScreen uses WPF's own per-monitor DPI, so this stays correct on mixed-DPI setups.
+        var local = SpotlightCanvas.PointFromScreen(new System.Windows.Point(cursorPx.X, cursorPx.Y));
+
+        System.Windows.Controls.Canvas.SetLeft(_spotlight, local.X - SpotlightDiameter / 2.0);
+        System.Windows.Controls.Canvas.SetTop(_spotlight, local.Y - SpotlightDiameter / 2.0);
     }
 
     private void OnSourceInitialized(object? sender, System.EventArgs e)
@@ -205,16 +209,11 @@ public partial class OverlayWindow : Window, IOverlayWindow
         _hwndSource.AddHook(WndProc);
 
         ApplyToolWindowStyle();
-        // Ensure WPF logical bounds match the actual monitor bounds.
-        // Use the window DPI as ground truth if available.
-        var dpi = Win32.GetDpiForWindow(_hwnd);
-        if (dpi != 0)
-        {
-            _dpiX = dpi;
-            _dpiY = dpi;
-        }
 
-        ApplyWpfBoundsFromPx(_boundsPx, _dpiX, _dpiY);
+        // Place the HWND in physical pixels. If this crosses into a monitor with a different
+        // DPI, Windows sends WM_DPICHANGED and WndProc keeps the rect pinned to the monitor.
+        ApplyBoundsPxToHwnd();
+        UpdateDpiFromWindow();
 
         SetMode(_mode);
 
@@ -232,21 +231,33 @@ public partial class OverlayWindow : Window, IOverlayWindow
         Height = boundsPx.Height * 96.0 / dy;
     }
 
-    private void ApplyBoundsPxToHwnd(Win32.Rect boundsPx)
+    private void ApplyBoundsPxToHwnd()
     {
         if (_hwnd == IntPtr.Zero)
         {
             return;
         }
 
+        // SWP_NOZORDER: re-asserting HWND_TOPMOST here would lift the overlay above the
+        // control palette and swallow clicks meant for it while in draw mode.
         Win32.SetWindowPos(
             _hwnd,
-            Win32.HwndTopmost,
-            boundsPx.Left,
-            boundsPx.Top,
-            boundsPx.Width,
-            boundsPx.Height,
-            Win32.SwpNoActivate);
+            IntPtr.Zero,
+            _boundsPx.Left,
+            _boundsPx.Top,
+            _boundsPx.Width,
+            _boundsPx.Height,
+            Win32.SwpNoActivate | Win32.SwpNoZOrder);
+    }
+
+    private void UpdateDpiFromWindow()
+    {
+        var dpi = _hwnd != IntPtr.Zero ? Win32.GetDpiForWindow(_hwnd) : 0;
+        if (dpi != 0)
+        {
+            _dpiX = dpi;
+            _dpiY = dpi;
+        }
     }
 
     private void OnClosed(object? sender, System.EventArgs e)
@@ -280,33 +291,50 @@ public partial class OverlayWindow : Window, IOverlayWindow
             return IntPtr.Zero;
         }
 
-        if (msg != Win32.WmDpichanged)
+        if (msg == Win32.WmWindowPosChanging)
         {
+            PinWindowPosToMonitor(lParam);
             return IntPtr.Zero;
         }
 
-        AppLog.Info($"OverlayWindow WM_DPICHANGED hwnd=0x{_hwnd.ToInt64():X} wParam=0x{wParam.ToInt64():X} lParam=0x{lParam.ToInt64():X}");
+        if (msg == Win32.WmDpichanged)
+        {
+            // New DPI is in wParam (LOWORD=x, HIWORD=y).
+            var newDpiX = (uint)(wParam.ToInt32() & 0xFFFF);
+            var newDpiY = (uint)((wParam.ToInt32() >> 16) & 0xFFFF);
+            _dpiX = newDpiX == 0 ? 96u : newDpiX;
+            _dpiY = newDpiY == 0 ? 96u : newDpiY;
 
-        // New DPI is in wParam (LOWORD=x, HIWORD=y).
-        var newDpiX = (uint)(wParam.ToInt32() & 0xFFFF);
-        var newDpiY = (uint)((wParam.ToInt32() >> 16) & 0xFFFF);
-        if (newDpiX == 0) newDpiX = 96;
-        if (newDpiY == 0) newDpiY = 96;
+            // Windows suggests a rect scaled by the DPI ratio, which for a full-screen overlay is
+            // the wrong size. Replace it with the monitor bounds and leave the message unhandled so
+            // WPF still rescales its content to the new DPI.
+            Marshal.StructureToPtr(_boundsPx, lParam, fDeleteOld: false);
 
-        _dpiX = newDpiX;
-        _dpiY = newDpiY;
+            AppLog.Info($"OverlayWindow WM_DPICHANGED hwnd=0x{_hwnd.ToInt64():X} dpi=({_dpiX},{_dpiY})");
+            Dispatcher.BeginInvoke(() => LogGeometry("wm-dpichanged"), DispatcherPriority.Background);
+        }
 
-        // lParam points to a recommended RECT in physical pixels.
-        var rect = Marshal.PtrToStructure<Win32.Rect>(lParam);
-        _boundsPx = rect;
-
-        ApplyBoundsPxToHwnd(rect);
-        ApplyWpfBoundsFromPx(rect, _dpiX, _dpiY);
-
-        LogGeometry("wm-dpichanged");
-
-        handled = true;
         return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Forces every move/resize of this overlay to land exactly on its monitor's bounds, whatever
+    /// WPF or the system computed (e.g. DIP-to-pixel rounding with a stale DPI).
+    /// </summary>
+    private void PinWindowPosToMonitor(IntPtr lParam)
+    {
+        var pos = Marshal.PtrToStructure<Win32.WindowPos>(lParam);
+        if ((pos.Flags & Win32.SwpNoMove) != 0 && (pos.Flags & Win32.SwpNoSize) != 0)
+        {
+            return;
+        }
+
+        pos.X = _boundsPx.Left;
+        pos.Y = _boundsPx.Top;
+        pos.Cx = _boundsPx.Width;
+        pos.Cy = _boundsPx.Height;
+        pos.Flags &= ~(Win32.SwpNoMove | Win32.SwpNoSize);
+        Marshal.StructureToPtr(pos, lParam, fDeleteOld: false);
     }
 
     private void ApplyToolWindowStyle()

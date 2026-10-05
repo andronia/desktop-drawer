@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System.Windows.Threading;
 using DesktopInk.Infrastructure;
 using DesktopInk.Windows;
 using Microsoft.Win32;
@@ -16,6 +17,8 @@ public sealed class OverlayManager : IDisposable
     private OverlayMode _mode = OverlayMode.PassThrough;
     private bool _isTemporaryDrawMode;
     private bool _isDisposed;
+    private bool _isSubscribedToDisplayChanges;
+    private DispatcherTimer? _displayChangeDebounce;
     private PenColor _penColor = PenColor.Red;
     private DrawTool _tool = DrawTool.Pen;
     private int _thickness = DefaultThickness;
@@ -33,6 +36,11 @@ public sealed class OverlayManager : IDisposable
     public event EventHandler<int>? ThicknessChanged;
     public event EventHandler<bool>? AutoFadeChanged;
     public event EventHandler<bool>? SpotlightChanged;
+
+    /// <summary>Raised after overlays were created or reconciled against the current monitor layout.</summary>
+    public event EventHandler? OverlaysRefreshed;
+
+    private static readonly TimeSpan DisplayChangeSettleDelay = TimeSpan.FromMilliseconds(500);
 
     public PenColor CurrentPenColor => _penColor;
 
@@ -59,9 +67,10 @@ public sealed class OverlayManager : IDisposable
 
     public void ShowOverlays()
     {
-        if (_overlays.Count == 0)
+        if (!_isSubscribedToDisplayChanges)
         {
             SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+            _isSubscribedToDisplayChanges = true;
         }
 
         RefreshOverlays();
@@ -69,12 +78,36 @@ public sealed class OverlayManager : IDisposable
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
-        if (_isDisposed)
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (_isDisposed || dispatcher is null)
         {
             return;
         }
 
-        _ = System.Windows.Application.Current.Dispatcher.BeginInvoke(RefreshOverlays);
+        // Monitor wake/hot-plug fires several events in a burst while the layout settles;
+        // refresh once after it goes quiet instead of rebuilding overlays for every step.
+        _ = dispatcher.BeginInvoke(() =>
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _displayChangeDebounce ??= CreateDisplayChangeDebounce();
+            _displayChangeDebounce.Stop();
+            _displayChangeDebounce.Start();
+        });
+    }
+
+    private DispatcherTimer CreateDisplayChangeDebounce()
+    {
+        var timer = new DispatcherTimer { Interval = DisplayChangeSettleDelay };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            RefreshOverlays();
+        };
+        return timer;
     }
 
     private void RefreshOverlays()
@@ -101,15 +134,30 @@ public sealed class OverlayManager : IDisposable
             return;
         }
 
-        foreach (var overlay in _overlays.ToList())
+        if (monitors.Count == 0)
         {
-            overlay.Close();
+            // Transient state during display reconfiguration; keep what we have until monitors return.
+            AppLog.Info("RefreshOverlays: no monitors reported; keeping existing overlays.");
+            return;
         }
 
-        _overlays.Clear();
+        // Reconcile instead of rebuilding: overlays whose monitor is unchanged keep their strokes.
+        foreach (var overlay in _overlays.ToList())
+        {
+            if (!monitors.Any(m => AreBoundsEqual(m.BoundsPx, overlay.MonitorBoundsPx)))
+            {
+                overlay.Close();
+                _overlays.Remove(overlay);
+            }
+        }
 
         foreach (var monitor in monitors)
         {
+            if (_overlays.Any(o => AreBoundsEqual(o.MonitorBoundsPx, monitor.BoundsPx)))
+            {
+                continue;
+            }
+
             var overlay = _overlayFactory(monitor);
             overlay.SetPenColor(_penColor);
             overlay.SetTool(_tool);
@@ -121,6 +169,8 @@ public sealed class OverlayManager : IDisposable
         }
 
         ApplyModeToOverlays();
+
+        OverlaysRefreshed?.Invoke(this, EventArgs.Empty);
     }
 
     public void ToggleMode(Win32.Rect? paletteMonitorBoundsPx = null)
@@ -423,7 +473,14 @@ public sealed class OverlayManager : IDisposable
 
         _isDisposed = true;
 
-        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        if (_isSubscribedToDisplayChanges)
+        {
+            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            _isSubscribedToDisplayChanges = false;
+        }
+
+        _displayChangeDebounce?.Stop();
+        _displayChangeDebounce = null;
 
         foreach (var overlay in _overlays.ToList())
         {

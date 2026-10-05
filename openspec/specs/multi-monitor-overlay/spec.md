@@ -11,6 +11,19 @@ When multiple monitors are connected in an extended desktop configuration, the s
 - **WHEN** the application starts
 - **THEN** an overlay surface exists for each monitor and matches its bounds.
 
+#### Scenario: Monitors with different scale factors
+- **GIVEN** monitors use different display scaling (e.g. 200% and 100%)
+- **WHEN** the application starts or the palette moves between them
+- **THEN** each overlay exactly covers its monitor's physical pixel bounds
+- **AND** the control palette keeps its logical size and renders fully at each monitor's scale
+- **AND** strokes and the cursor spotlight appear under the pointer.
+
+#### Scenario: Monitor layout changes
+- **GIVEN** strokes exist on several monitors
+- **WHEN** a monitor is connected, disconnected or rearranged
+- **THEN** overlays of unchanged monitors keep their strokes
+- **AND** the control palette stays on screen and above the overlays.
+
 ### Requirement: Draw mode works on palette-focused monitor
 In draw mode, the system SHALL allow the user to draw only on the monitor where the control palette is located. Other monitors SHALL remain in pass-through mode, allowing normal interaction with underlying applications.
 

@@ -16,6 +16,7 @@ public static class Win32
     internal const int WmHotkey = 0x0312;
     internal const int WmMouseActivate = 0x0021;
     internal const int WmDpichanged = 0x02E0;
+    internal const int WmWindowPosChanging = 0x0046;
 
     internal const int MaNoActivate = 3;
 
@@ -36,6 +37,7 @@ public static class Win32
     internal const uint ModControl = 0x0002;
     internal const uint ModShift = 0x0004;
     internal const uint ModWin = 0x0008;
+    internal const uint ModNoRepeat = 0x4000;
 
     internal const uint SwpNoSize = 0x0001;
     internal const uint SwpNoMove = 0x0002;
@@ -44,6 +46,7 @@ public static class Win32
     internal const uint SwpFrameChanged = 0x0020;
 
     internal const uint MonitorDefaultToNearest = 0x00000002;
+    internal const uint MonitorDefaultToPrimary = 0x00000001;
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool SetWindowPos(
@@ -109,6 +112,18 @@ public static class Win32
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct WindowPos
+    {
+        public IntPtr Hwnd;
+        public IntPtr HwndInsertAfter;
+        public int X;
+        public int Y;
+        public int Cx;
+        public int Cy;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct Point
     {
         public int X;
@@ -136,6 +151,9 @@ public static class Win32
     internal static extern IntPtr MonitorFromPoint(Point pt, uint dwFlags);
 
     [DllImport("user32.dll")]
+    internal static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetCursorPos(out Point lpPoint);
 
@@ -160,6 +178,19 @@ public static class Win32
         }
 
         bounds = info.RcMonitor;
+        return true;
+    }
+
+    internal static bool TryGetMonitorWorkArea(IntPtr hMonitor, out Rect workArea)
+    {
+        var info = new MonitorInfo { CbSize = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(hMonitor, ref info))
+        {
+            workArea = default;
+            return false;
+        }
+
+        workArea = info.RcWork;
         return true;
     }
 

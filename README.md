@@ -35,18 +35,30 @@ Grab the latest installer from the [Releases page](https://github.com/andronia/d
 - Single-instance guard (second launch activates the running instance)
 - Taskbar entry + Alt-Tab presence
 - Palette position persists across launches
-- Full multi-monitor support with per-monitor DPI
+- Full multi-monitor support, including mixed scaling (e.g. a 5K display at 200% next to a 1440p display at 100%)
 
 ## Hotkeys
 
 | Key | Action |
 |---|---|
 | `Win+Shift+D` | Toggle draw mode |
-| `Win+Shift+C` | Clear all strokes |
+| `Win+Shift+C` | Clear all strokes (`Win+Shift+X` if another app already uses `Win+Shift+C`) |
 | `Win+Shift+Q` | Quit the app |
 | `Alt` (double-tap + hold) | Temporary draw mode (auto-clears on release) |
 | `Alt+S` | Cycle pen color (in temporary draw mode) |
 | `Shift` while drawing | Straight line (pen) or square (rectangle) |
+
+If a default shortcut is already taken by another app, DesktopInk falls back to an alternative (`Ctrl+Alt+Shift+D/C/Q`); the palette tooltips always show the shortcut that is active. To choose your own, add a `hotkeys` section to `%APPDATA%\DesktopInk\settings.json` and restart the app:
+
+```json
+"hotkeys": {
+  "toggleDraw": "Win+Shift+D",
+  "clearAll": "Ctrl+Alt+E",
+  "quit": "Win+Shift+Q"
+}
+```
+
+Modifiers: `Ctrl`, `Alt`, `Shift`, `Win`. Keys: letters, digits, `F1`–`F24`, or names such as `Delete`, `Back`, `Space`.
 
 ## Palette overview
 
@@ -69,7 +81,10 @@ The palette is draggable — move it to any monitor; drawing will engage on the 
 
 Fully offline. No telemetry, no analytics, no crash reporting, no external dependencies that call home. The upstream GitHub update-check is **disabled by default** in this fork. If you want to re-enable it, edit `%APPDATA%\DesktopInk\settings.json` and set `versionCheck.enabled` to `true` (though it points at the original upstream repo, not this fork).
 
-The app writes exactly one file to disk: `%APPDATA%\DesktopInk\settings.json` (stores palette position and update-check preference). That's it.
+The app writes two files to disk:
+
+- `%APPDATA%\DesktopInk\settings.json` — palette position, shortcut overrides, update-check preference.
+- `%LOCALAPPDATA%\DesktopInk\desktopink.log` — errors only (e.g. a shortcut that could not be registered), capped at 1 MB. It stays on your machine.
 
 ## Building from source
 

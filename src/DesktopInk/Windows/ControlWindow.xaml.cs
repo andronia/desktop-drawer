@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Runtime.InteropServices;
 using DesktopInk.Core;
 using DesktopInk.Infrastructure;
 
@@ -11,11 +10,7 @@ namespace DesktopInk.Windows;
 
 public partial class ControlWindow : Window
 {
-    private const int HotkeyToggleDraw = 1;
-    private const int HotkeyClearAll = 2;
-    private const int HotkeyQuit = 3;
-    private const double LogicalWidth = 88.0;
-    private const double LogicalHeight = 494.0;
+    private const double DefaultEdgeMarginDip = 24.0;
 
     private readonly OverlayManager _overlayManager;
     private readonly AppSettings _appSettings;
@@ -23,8 +18,7 @@ public partial class ControlWindow : Window
 
     private HwndSource? _hwndSource;
     private IntPtr _hwnd;
-    private uint _dpiX = 96;
-    private uint _dpiY = 96;
+    private GlobalHotkeyRegistrar? _hotkeys;
     private Win32.Rect? _currentMonitorBoundsPx;
 
     public ControlWindow(OverlayManager overlayManager, AppSettings appSettings)
@@ -42,6 +36,7 @@ public partial class ControlWindow : Window
         _overlayManager.ThicknessChanged += OnThicknessChanged;
         _overlayManager.AutoFadeChanged += OnAutoFadeChanged;
         _overlayManager.SpotlightChanged += OnSpotlightChanged;
+        _overlayManager.OverlaysRefreshed += OnOverlaysRefreshed;
 
         UpdateColorSwatchSelection(_overlayManager.CurrentPenColor);
         UpdateToolButtonAppearance(_overlayManager.CurrentTool);
@@ -56,10 +51,15 @@ public partial class ControlWindow : Window
         {
             if (e.ButtonState == MouseButtonState.Pressed)
             {
+                // DragMove blocks until the mouse is released.
                 DragMove();
+                SaveCurrentPosition();
             }
         };
     }
+
+    /// <summary>Actions whose global hotkey could not be registered (all candidates taken).</summary>
+    public IReadOnlyList<HotkeyAction> UnboundHotkeys => _hotkeys?.Unbound ?? Array.Empty<HotkeyAction>();
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
@@ -69,12 +69,6 @@ public partial class ControlWindow : Window
         _hwndSource.AddHook(WndProc);
 
         ApplyToolWindowStyle();
-        var dpi = Win32.GetDpiForWindow(_hwnd);
-        if (dpi != 0)
-        {
-            _dpiX = dpi;
-            _dpiY = dpi;
-        }
 
         if (!TryRestoreSavedPosition())
         {
@@ -84,14 +78,9 @@ public partial class ControlWindow : Window
         LocationChanged += OnLocationChanged;
         UpdateMonitorFromCurrentPosition(forceNotify: true);
 
-        if (!TryRegisterHotkeys())
-        {
-            System.Windows.MessageBox.Show(
-                "Failed to register one or more global hotkeys. Another application may already be using them.",
-                "DesktopInk",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
+        _hotkeys = new GlobalHotkeyRegistrar(_hwnd);
+        _hotkeys.RegisterAll(_appSettings.Hotkeys);
+        ApplyHotkeyTooltips();
 
         // Install keyboard hook for temporary draw mode
         try
@@ -105,6 +94,20 @@ public partial class ControlWindow : Window
         {
             AppLog.Error("Failed to install keyboard hook for temporary draw mode", ex);
         }
+    }
+
+    private void ApplyHotkeyTooltips()
+    {
+        ToggleButton.ToolTip = $"Toggle Draw{FormatHotkey(HotkeyAction.ToggleDraw)}\nAlt+Double-click for temporary mode";
+        ClearButton.ToolTip = $"Clear{FormatHotkey(HotkeyAction.ClearAll)}";
+        QuitButton.ToolTip = $"Quit{FormatHotkey(HotkeyAction.Quit)}";
+    }
+
+    private string FormatHotkey(HotkeyAction action)
+    {
+        return _hotkeys is not null && _hotkeys.Bound.TryGetValue(action, out var gesture)
+            ? $" ({gesture})"
+            : string.Empty;
     }
 
     private void ApplyToolWindowStyle()
@@ -130,41 +133,100 @@ public partial class ControlWindow : Window
             return false;
         }
 
-        var widthPx = ScaleToPixels(Width, _dpiX);
-        var heightPx = ScaleToPixels(Height, _dpiY);
         var leftPx = (int)Math.Round(saved.Left.Value);
         var topPx = (int)Math.Round(saved.Top.Value);
 
-        if (!IsRectOnAnyScreen(leftPx, topPx, widthPx, heightPx))
+        // Nearest monitor to the saved corner: handles unplugged monitors and layout changes.
+        var monitor = Win32.MonitorFromPoint(new Win32.Point { X = leftPx, Y = topPx }, Win32.MonitorDefaultToNearest);
+        return PlaceOnMonitor(monitor, leftPx, topPx);
+    }
+
+    private void PositionNearPrimaryRightEdge()
+    {
+        // The primary monitor always contains the desktop origin.
+        var monitor = Win32.MonitorFromPoint(new Win32.Point { X = 0, Y = 0 }, Win32.MonitorDefaultToPrimary);
+        if (!Win32.TryGetMonitorWorkArea(monitor, out var workArea))
         {
-            // Saved position is off-screen (monitor unplugged, resolution changed).
+            return;
+        }
+
+        Win32.TryGetMonitorDpi(monitor, out var dpi, out _);
+        var widthPx = ScaleToPixels(Width, dpi);
+        var marginPx = ScaleToPixels(DefaultEdgeMarginDip, dpi);
+
+        PlaceOnMonitor(monitor, workArea.Right - widthPx - marginPx, workArea.Top + marginPx);
+    }
+
+    /// <summary>
+    /// Moves the palette's top-left corner to the given physical pixel position, clamped so the
+    /// whole palette stays inside the monitor's work area at that monitor's DPI.
+    /// </summary>
+    private bool PlaceOnMonitor(IntPtr monitor, int leftPx, int topPx)
+    {
+        if (_hwnd == IntPtr.Zero || monitor == IntPtr.Zero || !Win32.TryGetMonitorWorkArea(monitor, out var workArea))
+        {
             return false;
         }
 
-        var boundsPx = new Win32.Rect
-        {
-            Left = leftPx,
-            Top = topPx,
-            Right = leftPx + widthPx,
-            Bottom = topPx + heightPx,
-        };
+        Win32.TryGetMonitorDpi(monitor, out var dpi, out _);
+        var widthPx = ScaleToPixels(Width, dpi);
+        var heightPx = ScaleToPixels(Height, dpi);
 
-        ApplyBoundsPxToHwnd(boundsPx);
-        ApplyWpfBoundsFromPx(boundsPx, _dpiX, _dpiY);
+        var x = Math.Max(workArea.Left, Math.Min(leftPx, workArea.Right - widthPx));
+        var y = Math.Max(workArea.Top, Math.Min(topPx, workArea.Bottom - heightPx));
+
+        MoveTopLeftPx(x, y);
         return true;
     }
 
-    private static bool IsRectOnAnyScreen(int leftPx, int topPx, int widthPx, int heightPx)
+    private void MoveTopLeftPx(int leftPx, int topPx)
     {
-        var rect = new System.Drawing.Rectangle(leftPx, topPx, widthPx, heightPx);
-        foreach (var screen in System.Windows.Forms.Screen.AllScreens)
+        // Position only: WPF resizes the window itself when the move changes its DPI. That
+        // resize is anchored on Windows' suggested rect, so re-apply the corner if it drifted.
+        const uint flags = Win32.SwpNoSize | Win32.SwpNoZOrder | Win32.SwpNoActivate;
+        Win32.SetWindowPos(_hwnd, IntPtr.Zero, leftPx, topPx, 0, 0, flags);
+
+        if (Win32.GetWindowRect(_hwnd, out var rect) && (rect.Left != leftPx || rect.Top != topPx))
         {
-            if (screen.Bounds.IntersectsWith(rect))
-            {
-                return true;
-            }
+            Win32.SetWindowPos(_hwnd, IntPtr.Zero, leftPx, topPx, 0, 0, flags);
         }
-        return false;
+    }
+
+    private void EnsureOnScreen()
+    {
+        if (_hwnd == IntPtr.Zero || !Win32.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        var monitor = Win32.MonitorFromWindow(_hwnd, Win32.MonitorDefaultToNearest);
+        PlaceOnMonitor(monitor, rect.Left, rect.Top);
+    }
+
+    private void BringAboveOverlays()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        Win32.SetWindowPos(
+            _hwnd,
+            Win32.HwndTopmost,
+            0,
+            0,
+            0,
+            0,
+            Win32.SwpNoMove | Win32.SwpNoSize | Win32.SwpNoActivate);
+    }
+
+    private void OnOverlaysRefreshed(object? sender, EventArgs e)
+    {
+        // Monitors were added, removed or rearranged: keep the palette reachable, above the
+        // freshly created overlays, and re-bind draw mode to whichever monitor it is now on.
+        EnsureOnScreen();
+        BringAboveOverlays();
+        UpdateMonitorFromCurrentPosition(forceNotify: true);
     }
 
     private void SaveCurrentPosition()
@@ -174,76 +236,21 @@ public partial class ControlWindow : Window
             return;
         }
 
+        if (_appSettings.Palette.Left == rect.Left && _appSettings.Palette.Top == rect.Top)
+        {
+            return;
+        }
+
         _appSettings.Palette.Left = rect.Left;
         _appSettings.Palette.Top = rect.Top;
         _appSettings.Save();
-    }
-
-    private void PositionNearPrimaryRightEdge()
-    {
-        if (_hwnd == IntPtr.Zero)
-        {
-            return;
-        }
-
-        var primary = System.Windows.Forms.Screen.PrimaryScreen;
-        if (primary is null)
-        {
-            return;
-        }
-
-        var workingArea = primary.WorkingArea;
-        const int margin = 24;
-
-        // Note: we position in physical pixels for predictable placement.
-        var widthPx = ScaleToPixels(Width, _dpiX);
-        var heightPx = ScaleToPixels(Height, _dpiY);
-        var x = workingArea.Right - widthPx - margin;
-        var y = workingArea.Top + margin;
-
-        var boundsPx = new Win32.Rect
-        {
-            Left = x,
-            Top = y,
-            Right = x + widthPx,
-            Bottom = y + heightPx,
-        };
-
-        ApplyBoundsPxToHwnd(boundsPx);
-        ApplyWpfBoundsFromPx(boundsPx, _dpiX, _dpiY);
-    }
-
-    private bool TryRegisterHotkeys()
-    {
-        if (_hwnd == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        var ok = true;
-        ok &= Win32.RegisterHotKey(_hwnd, HotkeyToggleDraw, Win32.ModWin | Win32.ModShift, (uint)KeyInterop.VirtualKeyFromKey(Key.D));
-        ok &= Win32.RegisterHotKey(_hwnd, HotkeyClearAll, Win32.ModWin | Win32.ModShift, (uint)KeyInterop.VirtualKeyFromKey(Key.C));
-        ok &= Win32.RegisterHotKey(_hwnd, HotkeyQuit, Win32.ModWin | Win32.ModShift, (uint)KeyInterop.VirtualKeyFromKey(Key.Q));
-        return ok;
-    }
-
-    private void UnregisterHotkeys()
-    {
-        if (_hwnd == IntPtr.Zero)
-        {
-            return;
-        }
-
-        Win32.UnregisterHotKey(_hwnd, HotkeyToggleDraw);
-        Win32.UnregisterHotKey(_hwnd, HotkeyClearAll);
-        Win32.UnregisterHotKey(_hwnd, HotkeyQuit);
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
         SaveCurrentPosition();
 
-        UnregisterHotkeys();
+        _hotkeys?.UnregisterAll();
 
         LocationChanged -= OnLocationChanged;
 
@@ -253,6 +260,7 @@ public partial class ControlWindow : Window
         _overlayManager.ThicknessChanged -= OnThicknessChanged;
         _overlayManager.AutoFadeChanged -= OnAutoFadeChanged;
         _overlayManager.SpotlightChanged -= OnSpotlightChanged;
+        _overlayManager.OverlaysRefreshed -= OnOverlaysRefreshed;
 
         _keyboardHook.TemporaryModeActivated -= OnTemporaryModeActivated;
         _keyboardHook.TemporaryModeDeactivated -= OnTemporaryModeDeactivated;
@@ -295,94 +303,29 @@ public partial class ControlWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == Win32.WmHotkey)
-        {
-            handled = true;
-            var id = wParam.ToInt32();
-
-            switch (id)
-            {
-                case HotkeyToggleDraw:
-                    if (TryGetPaletteMonitorBounds(out var boundsPx))
-                    {
-                        _overlayManager.ToggleMode(boundsPx);
-                    }
-                    else
-                    {
-                        _overlayManager.ToggleMode();
-                    }
-                    break;
-                case HotkeyClearAll:
-                    _overlayManager.ClearAll();
-                    break;
-                case HotkeyQuit:
-                    _overlayManager.Quit();
-                    break;
-            }
-
-            return IntPtr.Zero;
-        }
-
-        if (msg != Win32.WmDpichanged)
+        // WM_DPICHANGED is deliberately left to WPF: it rescales the content and resizes the
+        // window to keep the palette's logical size when it is dragged across monitors.
+        if (msg != Win32.WmHotkey)
         {
             return IntPtr.Zero;
         }
-
-        AppLog.Info($"ControlWindow WM_DPICHANGED hwnd=0x{_hwnd.ToInt64():X} wParam=0x{wParam.ToInt64():X} lParam=0x{lParam.ToInt64():X}");
-
-        // New DPI is in wParam (LOWORD=x, HIWORD=y).
-        var newDpiX = (uint)(wParam.ToInt32() & 0xFFFF);
-        var newDpiY = (uint)((wParam.ToInt32() >> 16) & 0xFFFF);
-        if (newDpiX == 0) newDpiX = 96;
-        if (newDpiY == 0) newDpiY = 96;
-
-        _dpiX = newDpiX;
-        _dpiY = newDpiY;
-
-        // lParam points to a recommended RECT in physical pixels (position only).
-        var rect = Marshal.PtrToStructure<Win32.Rect>(lParam);
-
-        var newWidthPx = ScaleToPixels(LogicalWidth, newDpiX);
-        var newHeightPx = ScaleToPixels(LogicalHeight, newDpiY);
-        var adjustedRect = new Win32.Rect
-        {
-            Left = rect.Left,
-            Top = rect.Top,
-            Right = rect.Left + newWidthPx,
-            Bottom = rect.Top + newHeightPx,
-        };
-
-        ApplyBoundsPxToHwnd(adjustedRect);
-        ApplyWpfBoundsFromPx(adjustedRect, _dpiX, _dpiY);
 
         handled = true;
-        return IntPtr.Zero;
-    }
 
-    private void ApplyBoundsPxToHwnd(Win32.Rect boundsPx)
-    {
-        if (_hwnd != IntPtr.Zero)
+        switch ((HotkeyAction)wParam.ToInt32())
         {
-            Win32.SetWindowPos(
-                _hwnd,
-                Win32.HwndTopmost,
-                boundsPx.Left,
-                boundsPx.Top,
-                boundsPx.Width,
-                boundsPx.Height,
-                Win32.SwpNoActivate);
+            case HotkeyAction.ToggleDraw:
+                OnToggleClick(this, new RoutedEventArgs());
+                break;
+            case HotkeyAction.ClearAll:
+                _overlayManager.ClearAll();
+                break;
+            case HotkeyAction.Quit:
+                _overlayManager.Quit();
+                break;
         }
-    }
 
-    private void ApplyWpfBoundsFromPx(Win32.Rect boundsPx, uint dpiX, uint dpiY)
-    {
-        var dx = dpiX == 0 ? 96u : dpiX;
-        var dy = dpiY == 0 ? 96u : dpiY;
-
-        Left = boundsPx.Left * 96.0 / dx;
-        Top = boundsPx.Top * 96.0 / dy;
-        Width = boundsPx.Width * 96.0 / dx;
-        Height = boundsPx.Height * 96.0 / dy;
+        return IntPtr.Zero;
     }
 
     private static int ScaleToPixels(double logicalSize, uint dpi)

@@ -4,15 +4,28 @@
 TBD - created by archiving change add-drawing-overlay-mvp. Update Purpose after archive.
 ## Requirements
 ### Requirement: Register global hotkeys
-The system SHALL register the following global hotkeys so they work even when the application is not focused:
-- `Win+Shift+D` to toggle draw/pass-through mode
-- `Win+Shift+C` to clear all strokes
-- `Win+Shift+Q` to quit the application
+The system SHALL register one global hotkey per action so it works even when the application is not focused. Unless overridden in `settings.json` (`hotkeys.toggleDraw`, `hotkeys.clearAll`, `hotkeys.quit`), each action SHALL use the first available gesture from its default list:
+- Toggle draw/pass-through mode: `Win+Shift+D`, then `Ctrl+Alt+Shift+D`
+- Clear all strokes: `Win+Shift+C`, then `Win+Shift+X`, then `Ctrl+Alt+Shift+C`
+- Quit the application: `Win+Shift+Q`, then `Ctrl+Alt+Shift+Q`
 
 #### Scenario: Hotkeys work while the app is unfocused
 - **GIVEN** the application is running in the background
 - **WHEN** the user presses a configured hotkey
 - **THEN** the corresponding action is executed.
+
+#### Scenario: Default gesture already taken by another application
+- **GIVEN** another application has registered `Win+Shift+C`
+- **WHEN** the application starts
+- **THEN** clear-all is bound to the next free default (`Win+Shift+X`)
+- **AND** the palette's Clear tooltip shows the bound gesture
+- **AND** no error dialog is shown.
+
+#### Scenario: No gesture available for an action
+- **GIVEN** every candidate gesture for an action is taken or invalid
+- **WHEN** the application starts
+- **THEN** the other actions are still registered
+- **AND** a single non-modal tray notification names the action without a shortcut.
 
 ### Requirement: Mode toggle updates input behavior
 When the user toggles modes via `Win+Shift+D`, the system SHALL switch between draw mode and pass-through mode, and the input behavior SHALL change accordingly.

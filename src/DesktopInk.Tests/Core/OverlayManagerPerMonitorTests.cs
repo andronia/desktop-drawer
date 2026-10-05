@@ -74,11 +74,83 @@ public class OverlayManagerPerMonitorTests
         overlays.Single(o => o.MonitorBoundsPx.Equals(boundsB)).ClearAllCallCount.Should().Be(0);
     }
 
+    [Fact]
+    public void DisplayChange_ShouldKeepOverlaysForUnchangedMonitors()
+    {
+        var boundsA = new Win32.Rect { Left = 0, Top = 0, Right = 5120, Bottom = 2880 };
+        var boundsB = new Win32.Rect { Left = 5120, Top = 749, Right = 7680, Bottom = 2189 };
+        var boundsC = new Win32.Rect { Left = -1920, Top = 0, Right = 0, Bottom = 1080 };
+        var monitors = new List<MonitorEnumerator.MonitorInfo>(CreateMonitors(boundsA, boundsB));
+        var overlays = new List<TestOverlayWindow>();
+
+        using var manager = CreateManager(() => monitors, overlays);
+        var refreshCount = 0;
+        manager.OverlaysRefreshed += (_, _) => refreshCount++;
+        manager.ShowOverlays();
+
+        var originalA = overlays.Single(o => o.MonitorBoundsPx.Equals(boundsA));
+        var originalB = overlays.Single(o => o.MonitorBoundsPx.Equals(boundsB));
+
+        // Monitor B unplugged, monitor C added.
+        monitors.Clear();
+        monitors.AddRange(CreateMonitors(boundsA, boundsC));
+        manager.ShowOverlays();
+
+        originalA.IsClosed.Should().BeFalse();
+        originalB.IsClosed.Should().BeTrue();
+        overlays.Where(o => !o.IsClosed).Select(o => o.MonitorBoundsPx).Should().BeEquivalentTo(new[] { boundsA, boundsC });
+        refreshCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void DisplayChange_WithNoMonitors_ShouldKeepExistingOverlays()
+    {
+        var boundsA = new Win32.Rect { Left = 0, Top = 0, Right = 1920, Bottom = 1080 };
+        var monitors = new List<MonitorEnumerator.MonitorInfo>(CreateMonitors(boundsA));
+        var overlays = new List<TestOverlayWindow>();
+
+        using var manager = CreateManager(() => monitors, overlays);
+        manager.ShowOverlays();
+
+        monitors.Clear();
+        manager.ShowOverlays();
+
+        overlays.Should().ContainSingle().Which.IsClosed.Should().BeFalse();
+    }
+
+    [Fact]
+    public void DisplayChange_ShouldKeepDrawModeOnPaletteMonitor()
+    {
+        var boundsA = new Win32.Rect { Left = 0, Top = 0, Right = 5120, Bottom = 2880 };
+        var boundsB = new Win32.Rect { Left = 5120, Top = 749, Right = 7680, Bottom = 2189 };
+        var boundsC = new Win32.Rect { Left = -1920, Top = 0, Right = 0, Bottom = 1080 };
+        var monitors = new List<MonitorEnumerator.MonitorInfo>(CreateMonitors(boundsA, boundsB));
+        var overlays = new List<TestOverlayWindow>();
+
+        using var manager = CreateManager(() => monitors, overlays);
+        manager.ShowOverlays();
+        UpdatePaletteMonitor(manager, boundsA);
+        SetMode(manager, OverlayMode.Draw, boundsA);
+
+        monitors.Clear();
+        monitors.AddRange(CreateMonitors(boundsA, boundsC));
+        manager.ShowOverlays();
+
+        overlays.Single(o => !o.IsClosed && o.MonitorBoundsPx.Equals(boundsA)).Mode.Should().Be(OverlayMode.Draw);
+        overlays.Single(o => !o.IsClosed && o.MonitorBoundsPx.Equals(boundsC)).Mode.Should().Be(OverlayMode.PassThrough);
+    }
+
     private static OverlayManager CreateManager(
         IReadOnlyList<MonitorEnumerator.MonitorInfo> monitors,
         List<TestOverlayWindow> overlays)
     {
-        var monitorProvider = new Func<IReadOnlyList<MonitorEnumerator.MonitorInfo>>(() => monitors);
+        return CreateManager(() => monitors, overlays);
+    }
+
+    private static OverlayManager CreateManager(
+        Func<IReadOnlyList<MonitorEnumerator.MonitorInfo>> monitorProvider,
+        List<TestOverlayWindow> overlays)
+    {
         var overlayFactory = new Func<MonitorEnumerator.MonitorInfo, IOverlayWindow>(monitor =>
         {
             var overlay = new TestOverlayWindow(monitor.BoundsPx);
@@ -152,8 +224,11 @@ public class OverlayManagerPerMonitorTests
         {
         }
 
+        public bool IsClosed { get; private set; }
+
         public void Close()
         {
+            IsClosed = true;
         }
     }
 

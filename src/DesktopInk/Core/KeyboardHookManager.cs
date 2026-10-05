@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Windows.Threading;
 using DesktopInk.Infrastructure;
 
 namespace DesktopInk.Core;
@@ -16,6 +17,7 @@ internal sealed class KeyboardHookManager : IDisposable
     private bool _waitingForSecondPress;
     private readonly int _doubleClickThreshold;
     private bool _isSKeyHeld;
+    private readonly Dispatcher _dispatcher;
 
     public event EventHandler? TemporaryModeActivated;
     public event EventHandler? TemporaryModeDeactivated;
@@ -24,6 +26,7 @@ internal sealed class KeyboardHookManager : IDisposable
     public KeyboardHookManager()
     {
         _doubleClickThreshold = Win32.GetDoubleClickTime();
+        _dispatcher = Dispatcher.CurrentDispatcher;
         _hookProc = HookCallback;
         AppLog.Info($"KeyboardHookManager: Init. DoubleClickThreshold={_doubleClickThreshold}ms");
     }
@@ -70,14 +73,22 @@ internal sealed class KeyboardHookManager : IDisposable
                 var isKeyDown = wParam == (IntPtr)Win32.WmKeydown || wParam == (IntPtr)Win32.WmSyskeydown;
                 var isKeyUp = wParam == (IntPtr)Win32.WmKeyup || wParam == (IntPtr)Win32.WmSyskeyup;
 
-                if (isKeyDown && _isAltHeld && !_isSKeyHeld)
+                if (isKeyDown && _isAltHeld)
                 {
-                    _isSKeyHeld = true;
-                    ColorCycleRequested?.Invoke(this, EventArgs.Empty);
+                    if (!_isSKeyHeld)
+                    {
+                        _isSKeyHeld = true;
+                        Raise(ColorCycleRequested);
+                    }
+
+                    // Consume Alt+S so the focused app doesn't also run its own Alt+S shortcut.
+                    return new IntPtr(1);
                 }
-                else if (isKeyUp)
+
+                if (isKeyUp && _isSKeyHeld)
                 {
                     _isSKeyHeld = false;
+                    return new IntPtr(1);
                 }
             }
         }
@@ -100,7 +111,7 @@ internal sealed class KeyboardHookManager : IDisposable
             {
                 _isAltHeld = true;
                 _waitingForSecondPress = false;
-                TemporaryModeActivated?.Invoke(this, EventArgs.Empty);
+                Raise(TemporaryModeActivated);
                 AppLog.Info("KBHook: TempMode ACTIVATED.");
             }
             else
@@ -125,7 +136,7 @@ internal sealed class KeyboardHookManager : IDisposable
             _isAltHeld = false;
             _waitingForSecondPress = false;
             _isSKeyHeld = false;
-            TemporaryModeDeactivated?.Invoke(this, EventArgs.Empty);
+            Raise(TemporaryModeDeactivated);
             AppLog.Info("KBHook: TempMode DEACTIVATED.");
         }
         else if (!_waitingForSecondPress)
@@ -139,6 +150,20 @@ internal sealed class KeyboardHookManager : IDisposable
             _waitingForSecondPress = false;
             AppLog.Info("KBHook: Released while waiting, cancelled.");
         }
+    }
+
+    /// <summary>
+    /// Runs the handler after the hook callback returns. Windows silently removes low-level hooks
+    /// whose callbacks exceed LowLevelHooksTimeout, and the handlers reposition overlay windows.
+    /// </summary>
+    private void Raise(EventHandler? handler)
+    {
+        if (handler is null)
+        {
+            return;
+        }
+
+        _dispatcher.BeginInvoke(() => handler(this, EventArgs.Empty));
     }
 
     public void Dispose()

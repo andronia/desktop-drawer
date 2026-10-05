@@ -8,7 +8,14 @@ echo   DesktopInk - Build Installer
 echo ========================================
 echo.
 
-echo [1/2] Publishing self-contained exe...
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "([xml](Get-Content 'src\DesktopInk\DesktopInk.csproj')).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1"`) do set "APP_VERSION=%%v"
+if not defined APP_VERSION (
+    echo x Could not read ^<Version^> from src\DesktopInk\DesktopInk.csproj
+    popd
+    exit /b 1
+)
+
+echo [1/2] Publishing self-contained exe v%APP_VERSION%...
 call scripts\publish.cmd
 if errorlevel 1 (
     echo.
@@ -31,7 +38,7 @@ if not exist "%ISCC%" (
     exit /b 1
 )
 
-"%ISCC%" /Qp installer\DesktopInk.iss
+"%ISCC%" /Qp /DMyAppVersion=%APP_VERSION% installer\DesktopInk.iss
 if errorlevel 1 (
     echo.
     echo x Installer compile failed.
@@ -41,7 +48,7 @@ if errorlevel 1 (
 
 echo.
 echo + Installer built successfully.
-echo   Output: publish\installer\DesktopInkSetup-1.5.0.exe
+echo   Output: publish\installer\DesktopInkSetup-%APP_VERSION%.exe
 echo.
 
 popd

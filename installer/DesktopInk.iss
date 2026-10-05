@@ -2,7 +2,11 @@
 ; Per-user install — no UAC prompt, no admin required.
 
 #define MyAppName      "DesktopInk"
-#define MyAppVersion   "1.5.0"
+; MyAppVersion is passed in by scripts\make-installer.cmd (/DMyAppVersion=...), read from
+; <Version> in DesktopInk.csproj so the csproj stays the single source of truth.
+#ifndef MyAppVersion
+  #error MyAppVersion not defined. Build the installer with scripts\make-installer.cmd.
+#endif
 #define MyAppPublisher "Andronia"
 #define MyAppExeName   "DesktopInk.exe"
 

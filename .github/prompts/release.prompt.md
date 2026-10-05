@@ -24,5 +24,5 @@ Before proceeding, verify:
 
 **Important Notes**
 - Follow Semantic Versioning: MAJOR.MINOR.PATCH
-- The auto-generated release notes will appear in the in-app update notification
+- Release notes are user-facing: the Releases page is how users find new versions
 - For detailed workflow information, refer to `docs/RELEASE.md`

@@ -74,7 +74,7 @@ Once the tag is pushed, GitHub Actions automatically:
    - Both distribution executables attached
    - Proper naming: `DesktopInk-v1.1.0-win-x64.exe`
 
-Auto-generated release notes are displayed in the in-app update notification dialog, so keep them concise and user-facing.
+Keep release notes concise and user-facing; the Releases page is how users find new versions.
 
 ### Step 5: Verify Release
 

@@ -16,9 +16,6 @@ public sealed class AppSettings
         WriteIndented = true
     };
 
-    [JsonPropertyName("versionCheck")]
-    public VersionCheckSettings VersionCheck { get; set; } = new();
-
     [JsonPropertyName("palette")]
     public PaletteSettings Palette { get; set; } = new();
 
@@ -40,7 +37,6 @@ public sealed class AppSettings
 
             var json = File.ReadAllText(path, Encoding.UTF8);
             var settingsFromFile = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
-            settingsFromFile.VersionCheck ??= new VersionCheckSettings();
             settingsFromFile.Palette ??= new PaletteSettings();
             settingsFromFile.Hotkeys ??= new HotkeySettings();
             return settingsFromFile;
@@ -80,15 +76,6 @@ public sealed class AppSettings
         var root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         return Path.Combine(root, "DesktopInk", "settings.json");
     }
-}
-
-public sealed class VersionCheckSettings
-{
-    public bool Enabled { get; set; } = false;
-
-    public string? SkippedVersion { get; set; }
-
-    public DateTime? LastChecked { get; set; }
 }
 
 public sealed class PaletteSettings

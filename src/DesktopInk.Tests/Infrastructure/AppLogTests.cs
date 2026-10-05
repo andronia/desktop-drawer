@@ -5,6 +5,14 @@ using Xunit;
 
 namespace DesktopInk.Tests.Infrastructure;
 
+/// <summary>
+/// AppLog.LogPath is process-wide, and other test classes log errors (e.g. unbound hotkeys).
+/// Running these in isolation keeps those writes out of the file under test.
+/// </summary>
+[CollectionDefinition(nameof(AppLogTests), DisableParallelization = true)]
+public sealed class AppLogCollection;
+
+[Collection(nameof(AppLogTests))]
 public sealed class AppLogTests : IDisposable
 {
     private readonly string _tempDir;

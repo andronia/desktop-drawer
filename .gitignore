@@ -1,6 +1,7 @@
 .tmp/
 .tmp/.serena-skills/
 .claude/
+notes/
 
 # .NET / MSBuild
 **/bin/

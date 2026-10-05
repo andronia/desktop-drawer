@@ -23,8 +23,6 @@ public partial class App : System.Windows.Application
 	private bool _ownsSingleInstanceMutex;
 	private EventWaitHandle? _showPaletteSignal;
 	private RegisteredWaitHandle? _showPaletteWait;
-	private readonly object _updateDialogGate = new();
-	private bool _updateDialogShown;
 
 	protected override void OnStartup(StartupEventArgs e)
 	{
@@ -77,19 +75,6 @@ public partial class App : System.Windows.Application
 		{
 			_trayIcon.ShowWarning(DescribeUnboundHotkeys(_controlWindow.UnboundHotkeys));
 		}
-
-		_ = Task.Run(async () =>
-		{
-			try
-			{
-				await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-				await CheckForUpdatesAsync().ConfigureAwait(false);
-			}
-			catch (Exception ex)
-			{
-				AppLog.Error("Update check task failed.", ex);
-			}
-		});
 	}
 
 	protected override void OnExit(ExitEventArgs e)
@@ -143,104 +128,4 @@ public partial class App : System.Windows.Application
 
 		return $"Shortcut unavailable, already used by another app: {string.Join(", ", names)}.";
 	}
-
-	private async Task CheckForUpdatesAsync()
-	{
-		if (_appSettings is null)
-		{
-			return;
-		}
-
-		var versionSettings = _appSettings.VersionCheck;
-		if (!versionSettings.Enabled)
-		{
-			AppLog.Info("Version check disabled.");
-			return;
-		}
-
-		var currentVersion = GetCurrentVersion();
-		using var checker = new VersionChecker();
-		var result = await checker.CheckForUpdatesAsync(currentVersion, versionSettings, CancellationToken.None)
-			.ConfigureAwait(false);
-
-		_appSettings.Save();
-
-		if (!result.IsNewVersionAvailable || string.IsNullOrWhiteSpace(result.LatestVersion))
-		{
-			return;
-		}
-
-		if (string.Equals(versionSettings.SkippedVersion, result.LatestVersion, StringComparison.OrdinalIgnoreCase))
-		{
-			AppLog.Info($"Update skipped for version '{result.LatestVersion}'.");
-			return;
-		}
-
-		if (!string.IsNullOrWhiteSpace(versionSettings.SkippedVersion) &&
-			!string.Equals(versionSettings.SkippedVersion, result.LatestVersion, StringComparison.OrdinalIgnoreCase))
-		{
-			versionSettings.SkippedVersion = null;
-			_appSettings.Save();
-		}
-
-		lock (_updateDialogGate)
-		{
-			if (_updateDialogShown)
-			{
-				return;
-			}
-
-			_updateDialogShown = true;
-		}
-
-		await Dispatcher.InvokeAsync(() =>
-		{
-			var dialog = new UpdateNotificationDialog(currentVersion, result)
-			{
-				Owner = _controlWindow
-			};
-
-			dialog.ShowDialog();
-
-			if (dialog.UserChoice is null)
-			{
-				return;
-			}
-
-			AppLog.Info($"Update dialog action: {dialog.UserChoice}.");
-
-			if (dialog.UserChoice == UserAction.SkipVersion)
-			{
-				versionSettings.SkippedVersion = result.LatestVersion;
-				versionSettings.LastChecked = DateTime.UtcNow;
-				_appSettings.Save();
-			}
-		});
-	}
-
-	private static string GetCurrentVersion()
-	{
-		// Environment variable override for debugging/testing
-		var overrideVersion = Environment.GetEnvironmentVariable("DESKTOPINK_DEBUG_VERSION");
-		if (!string.IsNullOrWhiteSpace(overrideVersion))
-		{
-			AppLog.Info($"Using debug version from environment: {overrideVersion}");
-			return overrideVersion;
-		}
-
-		// Read the attribute rather than the file: Assembly.Location is empty in single-file publishes.
-		var fileVersion = typeof(App).Assembly
-			.GetCustomAttributes(typeof(System.Reflection.AssemblyFileVersionAttribute), inherit: false)
-			.OfType<System.Reflection.AssemblyFileVersionAttribute>()
-			.FirstOrDefault()?.Version;
-
-		if (string.IsNullOrWhiteSpace(fileVersion))
-		{
-			AppLog.Error("Failed to read current version.");
-			return "0.0.0";
-		}
-
-		return fileVersion;
-	}
 }
-

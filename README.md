@@ -12,7 +12,7 @@ Grab the latest installer from the [Releases page](https://github.com/andronia/d
 - ~52 MB installer, no .NET install required (runtime is bundled)
 - Shows up normally in **Settings → Apps → Installed apps** with a clean uninstaller
 
-> **SmartScreen:** on first launch Windows shows "unknown publisher" because the installer isn't code-signed. Click **More info → Run anyway**. The app makes zero network requests by default.
+> **SmartScreen:** on first launch Windows shows "unknown publisher" because the installer isn't code-signed. Click **More info → Run anyway**. The app makes zero network requests.
 
 ## Features
 
@@ -79,11 +79,11 @@ The palette is draggable — move it to any monitor; drawing will engage on the 
 
 ## Privacy
 
-Fully offline. No telemetry, no analytics, no crash reporting, no external dependencies that call home. The upstream GitHub update-check is **disabled by default** in this fork. If you want to re-enable it, edit `%APPDATA%\DesktopInk\settings.json` and set `versionCheck.enabled` to `true` (though it points at the original upstream repo, not this fork).
+Fully offline. The app makes no network requests at all: no telemetry, no analytics, no crash reporting, no update check. New versions are published on the [Releases page](https://github.com/andronia/desktop-drawer/releases).
 
 The app writes two files to disk:
 
-- `%APPDATA%\DesktopInk\settings.json` — palette position, shortcut overrides, update-check preference.
+- `%APPDATA%\DesktopInk\settings.json` — palette position and shortcut overrides.
 - `%LOCALAPPDATA%\DesktopInk\desktopink.log` — errors only (e.g. a shortcut that could not be registered), capped at 1 MB. It stays on your machine.
 
 ## Building from source

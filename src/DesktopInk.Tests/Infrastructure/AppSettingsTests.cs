@@ -14,9 +14,9 @@ public class AppSettingsTests
 
         var settings = AppSettings.Load(path);
 
-        settings.VersionCheck.Enabled.Should().BeFalse();
-        settings.VersionCheck.SkippedVersion.Should().BeNull();
-        settings.VersionCheck.LastChecked.Should().BeNull();
+        settings.Palette.Left.Should().BeNull();
+        settings.Palette.Top.Should().BeNull();
+        settings.Hotkeys.ClearAll.Should().BeNull();
         File.Exists(path).Should().BeTrue();
     }
 
@@ -25,24 +25,37 @@ public class AppSettingsTests
     {
         var tempDir = CreateTempDirectory();
         var path = Path.Combine(tempDir, "settings.json");
-        var timestamp = new DateTime(2026, 1, 24, 10, 0, 0, DateTimeKind.Utc);
 
         var settings = new AppSettings
         {
-            VersionCheck = new VersionCheckSettings
-            {
-                Enabled = false,
-                SkippedVersion = "1.4.0",
-                LastChecked = timestamp
-            }
+            Palette = new PaletteSettings { Left = 331, Top = 762 },
+            Hotkeys = new HotkeySettings { ClearAll = "Win+Shift+X" },
         };
 
         settings.Save(path);
 
         var loaded = AppSettings.Load(path);
-        loaded.VersionCheck.Enabled.Should().BeFalse();
-        loaded.VersionCheck.SkippedVersion.Should().Be("1.4.0");
-        loaded.VersionCheck.LastChecked.Should().Be(timestamp);
+        loaded.Palette.Left.Should().Be(331);
+        loaded.Palette.Top.Should().Be(762);
+        loaded.Hotkeys.ClearAll.Should().Be("Win+Shift+X");
+    }
+
+    [Fact]
+    public void Load_ShouldIgnoreRemovedVersionCheckSection()
+    {
+        var tempDir = CreateTempDirectory();
+        var path = Path.Combine(tempDir, "settings.json");
+        File.WriteAllText(path, """
+            {
+              "versionCheck": { "enabled": false, "skippedVersion": "1.4.2" },
+              "palette": { "left": 331, "top": 762 }
+            }
+            """);
+
+        var settings = AppSettings.Load(path);
+
+        settings.Palette.Left.Should().Be(331);
+        settings.Palette.Top.Should().Be(762);
     }
 
     private static string CreateTempDirectory()
